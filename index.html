@@ -32,7 +32,7 @@
           box-sizing: border-box;
       }
 
-      /* Style interne du terminal pour qu'il ait l'air d'une console propre */
+      /* Style interne du terminal console propre */
       #terminal-logs { 
           display: none; 
           background: rgba(15,23,42,0.98); 
@@ -80,7 +80,7 @@
     </style>
 </head>
 <body>
-  <!-- Le terminal prend exactement la place de la carte (45vh) -->
+  <!-- Le terminal prend exactement la place de la carte -->
   <div id="terminal-logs">
       <button class="close-log-btn" onclick="toggleLogs()">✕ Fermer</button>
       <div id="log-content"></div>
@@ -310,34 +310,47 @@ function fetchLiveQualicharge() {
         log("LIVE", "Aucune station en mémoire pour lancer le live.", true);
         return;
     }
-    log("LIVE", "Connexion au flux Qualicharge (téléchargement CSV en cours)...");
-    const liveUrl = "https://www.data.gouv.fr/fr/datasets/r/411443b1-6667-473f-8217-1c57c167408f";
+    log("LIVE", "Recherche du fichier dynamique Qualicharge sur data.gouv.fr...");
     
-    Papa.parse(liveUrl, {
-        download: true, header: true, skipEmptyLines: true,
-        complete: function(res) {
-            log("LIVE", `Flux Qualicharge chargé (${res.data.length} lignes). Analyse...`);
-            let dict = {};
-            res.data.forEach(r => { if(r.id_pdc_itinerance) dict[r.id_pdc_itinerance] = r; });
-            
-            globalData.forEach(st => {
-                let countOk = 0;
-                st.liveInfo = [];
-                st.pdcs.forEach(pdcId => {
-                    let info = dict[pdcId] || { etat_pdc: "INCONNU", occupation_pdc: "INCONNU", horodatage: "N/A" };
-                    if (["AVAILABLE", "DISPONIBLE"].includes((info.etat_pdc || "").toUpperCase()) && 
-                        ["FREE", "LIBRE", "FALSE", "0"].includes((info.occupation_pdc || "").toUpperCase())) {
-                        countOk++;
-                    }
-                    st.liveInfo.push({id: pdcId, etat: info.etat_pdc, occup: info.occupation_pdc, h: (info.horodatage || "").substring(0,16).replace('T',' ')});
+    fetch("https://www.data.gouv.fr/api/1/datasets/infrastructures-de-recharge-pour-vehicules-electriques-donnees-ouvertes/")
+    .then(res => res.json())
+    .then(data => {
+        const resource = data.resources.find(r => 
+            r.title.toLowerCase().includes('dynamique') || 
+            r.title.toLowerCase().includes('disponibilité') ||
+            r.description?.toLowerCase().includes('dynamique')
+        );
+        
+        const liveUrl = resource ? resource.latest : "https://www.data.gouv.fr/fr/datasets/r/411443b1-6667-473f-8217-1c57c167408f";
+        log("LIVE", `URL dynamique trouvée. Téléchargement CSV en cours...`);
+        
+        Papa.parse(liveUrl, {
+            download: true, header: true, skipEmptyLines: true,
+            complete: function(res) {
+                log("LIVE", `Flux Qualicharge chargé (${res.data.length} lignes). Analyse...`);
+                let dict = {};
+                res.data.forEach(r => { if(r.id_pdc_itinerance) dict[r.id_pdc_itinerance] = r; });
+                
+                globalData.forEach(st => {
+                    let countOk = 0;
+                    st.liveInfo = [];
+                    st.pdcs.forEach(pdcId => {
+                        let info = dict[pdcId] || { etat_pdc: "INCONNU", occupation_pdc: "INCONNU", horodatage: "N/A" };
+                        if (["AVAILABLE", "DISPONIBLE"].includes((info.etat_pdc || "").toUpperCase()) && 
+                            ["FREE", "LIBRE", "FALSE", "0"].includes((info.occupation_pdc || "").toUpperCase())) {
+                            countOk++;
+                        }
+                        st.liveInfo.push({id: pdcId, etat: info.etat_pdc, occup: info.occupation_pdc, h: (info.horodatage || "").substring(0,16).replace('T',' ')});
+                    });
+                    st.dispo = countOk;
                 });
-                st.dispo = countOk;
-            });
-            log("LIVE", "Disponibilités mises à jour avec succès !");
-            renderList();
-        },
-        error: function(err) { log("LIVE", "Erreur chargement flux live: " + err.message, true); }
-    });
+                log("LIVE", "Disponibilités mises à jour avec succès !");
+                renderList();
+            },
+            error: function(err) { log("LIVE", "Erreur chargement flux live: " + err.message, true); }
+        });
+    })
+    .catch(e => log("LIVE", "Erreur réseau API live: " + e.message, true));
 }
 
 function renderList() {
