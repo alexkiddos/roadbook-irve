@@ -21,7 +21,6 @@
       }
       body { font-family: -apple-system, sans-serif; margin: 0; background: var(--bg); color: var(--text); height: 100vh; height: 100dvh; display: flex; flex-direction: column; overflow: hidden; }
       
-      /* La carte et le terminal partagent exactement les mêmes dimensions */
       #map, #terminal-logs { 
           position: relative; 
           height: 45vh; 
@@ -32,7 +31,6 @@
           box-sizing: border-box;
       }
 
-      /* Style interne du terminal console propre */
       #terminal-logs { 
           display: none; 
           background: rgba(15,23,42,0.98); 
@@ -67,12 +65,21 @@
       .info-block { flex: 1; min-width: 0; }
       .op-title { font-weight: 800; font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--op-color); }
       .st-name { font-size: 13px; opacity: 0.9; margin-top: 2px; }
-      .tech-block { width: 85px; text-align: right; border-left: 1px solid var(--border); padding-left: 8px; }
+      
+      /* 1 - 3ème bloc réduit au strict nécessaire */
+      .tech-block { width: auto; min-width: 55px; text-align: right; border-left: 1px solid var(--border); padding-left: 8px; flex-shrink: 0; }
+      
       .dispo-ok { color: var(--dispo-ok); } .dispo-warn { color: var(--dispo-warn); } .dispo-alert { color: var(--dispo-alert); }
       .pdc-panel { display: none; margin-top: 10px; font-size: 12px; background: var(--pdc-bg); padding: 10px; border-radius: 6px; }
       .pdc-panel.show { display: block; }
-      .pdc-table { width: 100%; border-collapse: collapse; text-align: left; }
-      .pdc-table td, .pdc-table th { padding: 4px; border-bottom: 1px solid var(--border); font-family: monospace; font-size:11px;}
+      .pdc-table { width: 100%; border-collapse: collapse; text-align: left; table-layout: fixed; }
+      .pdc-table td, .pdc-table th { padding: 4px; border-bottom: 1px solid var(--border); font-family: monospace; font-size: 11px; }
+      
+      /* 3 - Réduction de la largeur de la colonne ID PDC avec retour à la ligne */
+      .pdc-table th:nth-child(1), .pdc-table td:nth-child(1) { width: 28%; word-break: break-all; overflow-wrap: break-word; }
+      .pdc-table th:nth-child(2), .pdc-table td:nth-child(2) { width: 28%; }
+      .pdc-table th:nth-child(3), .pdc-table td:nth-child(3) { width: 22%; }
+      .pdc-table th:nth-child(4), .pdc-table td:nth-child(4) { width: 22%; }
       
       .log-err { color: #f87171; }
       .close-log-btn { position: sticky; top: 0; float: right; background: #ef4444; color: white; border: none; padding: 4px 8px; border-radius: 4px; font-weight: bold; cursor: pointer; z-index: 20; }
@@ -80,7 +87,6 @@
     </style>
 </head>
 <body>
-  <!-- Le terminal prend exactement la place de la carte -->
   <div id="terminal-logs">
       <button class="close-log-btn" onclick="toggleLogs()">✕ Fermer</button>
       <div id="log-content"></div>
@@ -104,6 +110,7 @@
 <script>
 let map, gpxLine, userMarker, watchId = null, isAutoTrack = false;
 let gpxPoints = [], globalData = [], markers = {};
+let lastValidLat = null, lastValidLng = null; // 4 - Pour l'anti-bruit GPS
 const RAYON_RECHERCHE_KM = 3.0, PUISSANCE_MIN_KW = 100.0, KM_MIN_DEPART = 5.0;
 
 function log(tag, message, isError=false) {
@@ -171,11 +178,22 @@ function toggleAutoTrack() {
     } else {
         btn.classList.remove('active-track');
         if(watchId) navigator.geolocation.clearWatch(watchId);
+        lastValidLat = null; lastValidLng = null;
         log("GPS", "Suivi désactivé.");
     }
 }
 
 function updatePosition(lat, lng, heading) {
+    // 4 - Tolérance anti-bruit GPS : si on a déjà une position de référence, on vérifie la distance
+    if (lastValidLat !== null && lastValidLng !== null) {
+        let distanceMetres = distanceHaversine(lastValidLat, lastValidLng, lat, lng) * 1000;
+        // Si le déplacement est inférieur à 15 mètres, on ignore la mise à jour pour éviter le bruit et les rendus inutiles
+        if (distanceMetres < 15) return;
+    }
+    
+    lastValidLat = lat;
+    lastValidLng = lng;
+
     map.panTo([lat, lng]);
     let h = heading || 0;
     let svg = `<div style="width:32px;height:32px;"><svg class="user-loc-arrow" style="transform: rotate(${h}deg);" viewBox="0 0 24 24"><path fill="#0284c7" stroke="#ffffff" stroke-width="2" d="M12 2L4.5 20.29l.71.71L12 18l6.79 3 .71-.71z"/></svg></div>`;
@@ -336,11 +354,21 @@ function fetchLiveQualicharge() {
                     st.liveInfo = [];
                     st.pdcs.forEach(pdcId => {
                         let info = dict[pdcId] || { etat_pdc: "INCONNU", occupation_pdc: "INCONNU", horodatage: "N/A" };
-                        if (["AVAILABLE", "DISPONIBLE"].includes((info.etat_pdc || "").toUpperCase()) && 
-                            ["FREE", "LIBRE", "FALSE", "0"].includes((info.occupation_pdc || "").toUpperCase())) {
+                        
+                        // 2 - Condition stricte : etat_pdc == en_service ET occupation_pdc == libre
+                        let etatClean = (info.etat_pdc || "").trim().toLowerCase();
+                        let occupClean = (info.occupation_pdc || "").trim().toLowerCase();
+                        
+                        let estEnService = ["en_service", "active", "available", "disponible"].includes(etatClean);
+                        etatClean = estEnService ? "en_service" : info.etat_pdc; // Uniformise l'affichage si besoin
+
+                        let estLibre = ["libre", "free", "false", "0", "available"].includes(occupClean);
+                        occupClean = estLibre ? "libre" : info.occupation_pdc;
+
+                        if (estEnService && estLibre) {
                             countOk++;
                         }
-                        st.liveInfo.push({id: pdcId, etat: info.etat_pdc, occup: info.occupation_pdc, h: (info.horodatage || "").substring(0,16).replace('T',' ')});
+                        st.liveInfo.push({id: pdcId, etat: etatClean, occup: occupClean, h: (info.horodatage || "").substring(0,16).replace('T',' ')});
                     });
                     st.dispo = countOk;
                 });
