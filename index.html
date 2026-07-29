@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta name='viewport' content='width=device-width, initial-scale=1.0, viewport-fit=cover'>
+    <meta charset='utf-8'>
+    <title>IRVE Roadbook Live</title>
+    <link rel="manifest" href="./manifest.json">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+    <style>
+      :root { 
+        --bg: #f8fafc; --text: #0f172a; --border: #cbd5e1; --card-bg: #ffffff; --input-bg: #ffffff; --input-border: #94a3b8; --pdc-bg: #f1f5f9; --btn-bg: #e2e8f0; --btn-text: #0f172a; 
+        --op-color: #0284c7; --dispo-ok: #16a34a; --dispo-warn: #d97706; --dispo-alert: #dc2626;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #121212; --text: #e0e0e0; --border: #333333; --card-bg: #18181b; --input-bg: #18181b; --input-border: #3f3f46; --pdc-bg: #09090b; --btn-bg: #1e293b; --btn-text: #ffffff; 
+          --op-color: #38bdf8; --dispo-ok: #4ade80; --dispo-warn: #fbbf24; --dispo-alert: #f87171;
+        }
+      }
+      body { font-family: -apple-system, sans-serif; margin: 0; background: var(--bg); color: var(--text); height: 100vh; height: 100dvh; display: flex; flex-direction: column; overflow: hidden; }
+      #map { position: relative; height: 45vh; height: 45dvh; width: 100%; border-bottom: 2px solid #cbd5e1; flex-shrink: 0; }
+      .leaflet-control-zoom-trace { background: #ffffff !important; width: 34px; height: 34px; line-height: 34px; text-align: center; font-weight: bold; font-size: 18px; color: #0f172a !important; cursor: pointer; border-radius: 6px; border: 1px solid #cbd5e1 !important; box-shadow: 0 2px 6px rgba(0,0,0,0.25); display: flex; align-items: center; justify-content: center; }
+      .leaflet-control-zoom-trace.active-track { background: #16a34a !important; color: #ffffff !important; }
+      #main-content { height: 55vh; height: 55dvh; flex: 1; overflow-y: auto; padding: 10px; box-sizing: border-box; }
+      .header-controls { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 10px; font-size: 13px; }
+      .refresh-btn { background: var(--btn-bg); color: var(--btn-text); border: 1px solid var(--border); padding: 5px 9px; border-radius: 6px; cursor: pointer; font-weight: 600; display: inline-flex; align-items: center; justify-content: center; font-size: 14px; }
+      .input-field { background: var(--input-bg); color: var(--text); border: 1px solid var(--input-border); padding: 6px; width: 65px; border-radius: 6px; font-weight: bold; text-align: center; }
+      
+      /* Card styles from your Python script */
+      .station-card { display: flex; flex-direction: column; border-bottom: 1px solid var(--border); padding: 12px 6px; cursor: pointer; background: var(--card-bg); border-radius: 6px; margin-bottom: 4px;}
+      .station-main { display: flex; align-items: center; width: 100%; }
+      .nav-block { width: 75px; min-width: 75px; border-right: 1px solid var(--border); margin-right: 12px; }
+      .borne-container { display: flex; flex-direction: column; width: 14px; height: 18px; flex-shrink: 0; }
+      .chapeau-rouge { height: 6px; background-color: #ef4444; border-top-left-radius: 6px; border-top-right-radius: 6px; }
+      .base-blanche { flex: 1; background-color: #ffffff; border: 1px solid #9ca3af; border-top: none; display: flex; align-items: center; justify-content: center; font-size: 7px; font-weight: 900; color: #1f2937; }
+      .pk-line { font-size: 16px; font-weight: 800; display: flex; align-items: center; gap: 4px; }
+      .detour-line { font-size: 11px; opacity: 0.7; margin-left: 18px; margin-top: 2px; }
+      .info-block { flex: 1; min-width: 0; }
+      .op-title { font-weight: 800; font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--op-color); }
+      .st-name { font-size: 13px; opacity: 0.9; margin-top: 2px; }
+      .tech-block { width: 85px; text-align: right; border-left: 1px solid var(--border); padding-left: 8px; }
+      .dispo-ok { color: var(--dispo-ok); } .dispo-warn { color: var(--dispo-warn); } .dispo-alert { color: var(--dispo-alert); }
+      .pdc-panel { display: none; margin-top: 10px; font-size: 12px; background: var(--pdc-bg); padding: 10px; border-radius: 6px; }
+      .pdc-panel.show { display: block; }
+      .pdc-table { width: 100%; border-collapse: collapse; text-align: left; }
+      .pdc-table td, .pdc-table th { padding: 4px; border-bottom: 1px solid var(--border); font-family: monospace; font-size:11px;}
+      
+      /* Log Terminal */
+      #terminal-logs { display: none; position: absolute; top: 50px; left: 10px; right: 10px; height: 35vh; background: rgba(15,23,42,0.95); color: #4ade80; font-family: monospace; font-size: 11px; overflow-y: auto; z-index: 9999; padding: 10px; border-radius: 8px; box-shadow: 0 10px 25px rgba(0,0,0,0.5); backdrop-filter: blur(4px); }
+      .log-err { color: #f87171; }
+      
+      /* Tracker */
+      .user-loc-arrow { width: 24px; height: 24px; transition: transform 0.6s ease-out; filter: drop-shadow(0px 2px 4px rgba(0,0,0,0.4)); }
+    </style>
+</head>
+<body>
+  <div id="map">
+      <div id="terminal-logs"></div>
+  </div>
+  <div id="main-content">
+    <div class="header-controls">
+      <b>km :</b> <input type='number' id='kmInput' class='input-field' value="0" oninput='renderList()'>
+      <input type="file" id="gpxInput" accept=".gpx" style="display:none;" onchange="handleGPXUpload(event)">
+      <button class="refresh-btn" onclick="document.getElementById('gpxInput').click()">📁 GPX</button>
+      <button class="refresh-btn" onclick="toggleLogs()">📝 Logs</button>
+      <button class='refresh-btn' onclick="fetchLiveQualicharge()">🔄 Live</button>
+    </div>
+    <div id="stationsContainer">
+        <div style="text-align:center; opacity:0.6; padding: 20px;">Veuillez charger un fichier GPX pour commencer.<br><br>💡 (Bouton 📁 GPX)</div>
+    </div>
+  </div>
+
+<script>
+// === VARIABLES GLOBALES ===
+let map, gpxLine, userMarker, watchId = null, isAutoTrack = false;
+let gpxPoints = [], globalData = [], markers = {};
+const RAYON_RECHERCHE_KM = 3.0, PUISSANCE_MIN_KW = 100.0, KM_MIN_DEPART = 5.0;
+
+// === FONCTION DE LOGS (LE TERMINAL) ===
+function log(tag, message, isError=false) {
+    const ts = new Date().toLocaleTimeString('fr-FR');
+    const pref = isError ? "❌ [ERREUR]" : "ℹ️ [INFO]";
+    const line = `[${ts}] ${pref} [${tag}] ${message}`;
+    if (isError) console.error(line); else console.log(line);
+    
+    const term = document.getElementById('terminal-logs');
+    const div = document.createElement('div');
+    if(isError) div.className = 'log-err';
+    div.innerText = line;
+    term.appendChild(div);
+    term.scrollTop = term.scrollHeight;
+}
+function toggleLogs() {
+    const t = document.getElementById('terminal-logs');
+    t.style.display = t.style.display === 'none' ? 'block' : 'none';
+}
+
+// === INITIALISATION CARTE ===
+function initMap() {
+    map = L.map('map').setView([46.5, 2.5], 6);
+    L.tileLayer('https://{s}.tile.openstreetmap.de/tiles/osmde/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
+    
+    const AutoTrackCtrl = L.Control.extend({
+        options: { position: 'topleft' },
+        onAdd: function() {
+            let btn = L.DomUtil.create('div', 'leaflet-bar leaflet-control leaflet-control-zoom-trace');
+            btn.id = 'autoTrackBtn'; btn.innerHTML = '🚗'; btn.onclick = (e) => { e.stopPropagation(); toggleAutoTrack(); };
+            return btn;
+        }
+    });
+    map.addControl(new AutoTrackCtrl());
+    log("INIT", "Carte Leaflet initialisée.");
+}
+
+// === GEOLOCALISATION ===
+function toggleAutoTrack() {
+    isAutoTrack = !isAutoTrack;
+    const btn = document.getElementById('autoTrackBtn');
+    if (isAutoTrack) {
+        btn.classList.add('active-track');
+        if(navigator.geolocation) {
+            watchId = navigator.geolocation.watchPosition(
+                pos => updatePosition(pos.coords.latitude, pos.coords.longitude, pos.coords.heading),
+                err => log("GPS", "Erreur : " + err.message, true),
+                { enableHighAccuracy: true, maximumAge: 3000 }
+            );
+            log("GPS", "Suivi activé.");
+        }
+    } else {
+        btn.classList.remove('active-track');
+        if(watchId) navigator.geolocation.clearWatch(watchId);
+        log("GPS", "Suivi désactivé.");
+    }
+}
+
+function updatePosition(lat, lng, heading) {
+    map.panTo([lat, lng]);
+    let h = heading || 0;
+    let svg = `<div style="width:32px;height:32px;"><svg class="user-loc-arrow" style="transform: rotate(${h}deg);" viewBox="0 0 24 24"><path fill="#0284c7" stroke="#ffffff" stroke-width="2" d="M12 2L4.5 20.29l.71.71L12 18l6.79 3 .71-.71z"/></svg></div>`;
+    
+    if(userMarker) {
+        userMarker.setLatLng([lat, lng]);
+        let arrow = userMarker.getElement().querySelector('.user-loc-arrow');
+        if(arrow) arrow.style.transform = `rotate(${h}deg)`;
+    } else {
+        userMarker = L.marker([lat, lng], {icon: L.divIcon({html: svg, iconSize:[32,32], iconAnchor:[16,16]})}).addTo(map);
+    }
+
+    // Trouver le point GPX le plus proche pour mettre à jour le KM
+    if(gpxPoints.length > 0) {
+        let minDist = Infinity, bestKm = 0;
+        for(let pt of gpxPoints) {
+            let d = distanceHaversine(lat, lng, pt.lat, pt.lon);
+            if(d < minDist) { minDist = d; bestKm = pt.km; }
+        }
+        document.getElementById('kmInput').value = Math.round(bestKm);
+        renderList();
+    }
+}
+
+// === OUTILS ===
+function distanceHaversine(lat1, lon1, lat2, lon2) {
+    const R = 6371.0, dLat = (lat2-lat1)*Math.PI/180, dLon = (lon2-lon1)*Math.PI/180;
+    const a = Math.sin(dLat/2)*Math.sin(dLat/2) + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLon/2)*Math.sin(dLon/2);
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+
+// === LECTURE GPX ===
+function handleGPXUpload(event) {
+    const file = event.target.files[0];
+    if(!file) return;
+    log("GPX", `Fichier '${file.name}' sélectionné. Lecture en cours...`);
+    const reader = new FileReader();
+    reader.onload = (e) => {
+        const parser = new DOMParser();
+        const xml = parser.parseFromString(e.target.result, "text/xml");
+        const trkpts = xml.getElementsByTagName("trkpt");
+        gpxPoints = [];
+        let km = 0, prev = null;
+        for(let i=0; i<trkpts.length; i++) {
+            let lat = parseFloat(trkpts[i].getAttribute("lat"));
+            let lon = parseFloat(trkpts[i].getAttribute("lon"));
+            if(prev) km += distanceHaversine(prev.lat, prev.lon, lat, lon);
+            gpxPoints.push({lat, lon, km});
+            prev = {lat, lon};
+        }
+        log("GPX", `${gpxPoints.length} points extraits. Distance totale : ${km.toFixed(1)} km.`);
+        
+        if(gpxLine) map.removeLayer(gpxLine);
+        gpxLine = L.polyline(gpxPoints.map(p => [p.lat, p.lon]), {color: '#0284c7', weight: 4}).addTo(map);
+        map.fitBounds(gpxLine.getBounds());
+        
+        // On lance le traitement des stations après le chargement du GPX
+        document.getElementById('terminal-logs').style.display = 'block'; // Ouvre les logs
+        fetchAndFilterStations();
+    };
+    reader.readAsText(file);
+}
+
+// === TRAITEMENT IRVE ===
+function fetchAndFilterStations() {
+    log("ÉTAPE 1", "Recherche du fichier IRVE statique sur data.gouv.fr...");
+    fetch("https://www.data.gouv.fr/api/1/datasets/infrastructures-de-recharge-pour-vehicules-electriques-donnees-ouvertes/")
+    .then(res => res.json())
+    .then(data => {
+        const url = data.resources.find(r => r.title.toLowerCase().includes('statique')).latest;
+        log("STATIQUE", `Fichier trouvé. Téléchargement et analyse CSV en cours...`);
+        
+        Papa.parse(url, {
+            download: true,
+            header: true,
+            skipEmptyLines: true,
+            complete: function(results) {
+                log("STATIQUE", `${results.data.length} bornes brutes téléchargées. Filtrage en cours...`);
+                processStaticData(results.data);
+            }
+        });
+    }).catch(e => log("ÉTAPE 1", "Erreur réseau: " + e.message, true));
+}
+
+function processStaticData(rawData) {
+    // 1. Filtrer puissance (Rapide) et extraire coordonnées
+    let stationsMap = new Map();
+    
+    rawData.forEach(row => {
+        let pwr = parseFloat(row.puissance_nominale || row.puissance_max_kw || 0);
+        if (pwr < PUISSANCE_MIN_KW) return;
+        
+        let coordsStr = row.coordonneesXY || row.xy_coords || row.coordonnees;
+        if(!coordsStr) return;
+        let c = coordsStr.replace('[','').replace(']','').split(',');
+        let lon = parseFloat(c[0]), lat = parseFloat(c[1]);
+        if(isNaN(lat) || isNaN(lon)) return;
+        
+        let stId = row.id_station_itinerance || row.nom_station;
+        if(!stationsMap.has(stId)) {
+            stationsMap.set(stId, {
+                id: stId, nom: row.nom_station, op: row.nom_amenageur || "IRVE",
+                lat: lat, lng: lon, pwr: pwr, pdcs: []
+            });
+        }
+        let st = stationsMap.get(stId);
+        if(pwr > st.pwr) st.pwr = pwr;
+        st.pdcs.push(row.id_pdc_itinerance);
+    });
+
+    log("TRAITEMENT", `${stationsMap.size} stations rapides identifiées. Projection sur le tracé GPX...`);
+    
+    // 2. Projeter sur le GPX
+    let sampled = gpxPoints.filter((_, i) => i % 3 === 0); // Echantillonnage
+    globalData = [];
+    
+    stationsMap.forEach(st => {
+        let minDist = Infinity, bestKm = 0;
+        for(let pt of sampled) {
+            let d = distanceHaversine(st.lat, st.lng, pt.lat, pt.lon);
+            if(d < minDist) { minDist = d; bestKm = pt.km; }
+        }
+        
+        if (minDist <= RAYON_RECHERCHE_KM && bestKm >= KM_MIN_DEPART) {
+            globalData.push({
+                ...st, km: bestKm, detour: minDist,
+                dispo: st.pdcs.length, total: st.pdcs.length, liveInfo: []
+            });
+        }
+    });
+    
+    globalData.sort((a,b) => a.km - b.km);
+    log("PROJECTION", `${globalData.length} stations retenues le long du tracé.`);
+    renderList();
+    fetchLiveQualicharge(); // Lancer automatiquement le live
+}
+
+function fetchLiveQualicharge() {
+    if(globalData.length === 0) return;
+    log("LIVE", "Connexion au flux Qualicharge...");
+    const liveUrl = "https://www.data.gouv.fr/fr/datasets/r/411443b1-6667-473f-8217-1c57c167408f";
+    
+    Papa.parse(liveUrl, {
+        download: true, header: true, skipEmptyLines: true,
+        complete: function(res) {
+            let dict = {};
+            res.data.forEach(r => { dict[r.id_pdc_itinerance] = r; });
+            
+            globalData.forEach(st => {
+                let countOk = 0;
+                st.liveInfo = [];
+                st.pdcs.forEach(pdcId => {
+                    let info = dict[pdcId] || { etat_pdc: "INCONNU", occupation_pdc: "INCONNU", horodatage: "N/A" };
+                    if (["AVAILABLE", "DISPONIBLE"].includes(info.etat_pdc.toUpperCase()) && 
+                        ["FREE", "LIBRE", "FALSE", "0"].includes(info.occupation_pdc.toUpperCase())) {
+                        countOk++;
+                    }
+                    st.liveInfo.push({id: pdcId, etat: info.etat_pdc, occup: info.occupation_pdc, h: info.horodatage.substring(0,16).replace('T',' ')});
+                });
+                st.dispo = countOk;
+            });
+            log("LIVE", "Disponibilités mises à jour !");
+            renderList();
+        },
+        error: function(err) { log("LIVE", "Erreur: " + err.message, true); }
+    });
+}
+
+// === AFFICHAGE ===
+function renderList() {
+    const kmFilter = parseFloat(document.getElementById('kmInput').value) || 0;
+    for(let k in markers) map.removeLayer(markers[k]);
+    markers = {};
+    
+    let html = "";
+    globalData.forEach((s, i) => {
+        if (s.km < kmFilter) return; // Filtre
+        
+        let status = s.dispo === 0 ? 'dispo-alert' : (s.dispo <= s.total/3 ? 'dispo-warn' : 'dispo-ok');
+        let color = s.dispo === 0 ? '#dc2626' : (s.dispo <= s.total/3 ? '#d97706' : '#16a34a');
+        
+        // Marqueur carte
+        let m = L.circleMarker([s.lat, s.lng], {radius:8, fillColor:color, color:'#fff', weight:1, fillOpacity:0.9}).addTo(map);
+        m.bindPopup(`<b>${s.op}</b><br>${s.nom}`);
+        markers[i] = m;
+        
+        // PDCs HTML
+        let pdcsHtml = s.liveInfo.map(p => `<tr><td>${p.id}</td><td><b>${p.etat}</b></td><td>${p.occup}</td><td>${p.h}</td></tr>`).join('');
+        if(!pdcsHtml) pdcsHtml = `<tr><td colspan="4">Aucun statut disponible</td></tr>`;
+        
+        html += `
+        <div class='station-card' onclick="map.setView([${s.lat}, ${s.lng}], 14); markers[${i}].openPopup();">
+          <div class='station-main'>
+            <div class='nav-block'>
+              <div class='pk-line'>
+                <div class='borne-container'><div class='chapeau-rouge'></div><div class='base-blanche'>km</div></div>
+                <span class='pk-val'>${(s.km - kmFilter).toFixed(1)}</span>
+              </div>
+              <div class='detour-line'>↳<i>${s.detour.toFixed(2)}</i></div>
+            </div>
+            <div class='info-block'>
+              <div class='op-title'>${s.op}</div>
+              <div class='st-name'>${s.nom}</div>
+            </div>
+            <div class='tech-block' onclick="event.stopPropagation(); document.getElementById('pdc_${i}').classList.toggle('show')">
+              <div style='font-weight:bold; font-size:12px;'>${s.pwr}kW</div>
+              <div class='${status}' style='font-size:11px; font-weight:bold;'>${s.dispo}/${s.total} PDC</div>
+            </div>
+          </div>
+          <div id='pdc_${i}' class='pdc-panel'>
+            <table class='pdc-table'>
+              <thead><tr><th>PDC</th><th>Etat</th><th>Occupation</th><th>Heure</th></tr></thead>
+              <tbody>${pdcsHtml}</tbody>
+            </table>
+          </div>
+        </div>`;
+    });
+    
+    document.getElementById('stationsContainer').innerHTML = html || "<div style='padding:20px; text-align:center;'>Aucune station trouvée après ce kilomètre.</div>";
+}
+
+// Lancement
+initMap();
+if('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js').then(() => log("PWA", "Service Worker installé (Mode hors-ligne prêt)."));
+  });
+}
+</script>
+</body>
+</html>

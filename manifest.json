@@ -1,0 +1,15 @@
+{
+  "name": "Roadbook IRVE",
+  "short_name": "Roadbook",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#121212",
+  "theme_color": "#0284c7",
+  "icons": [
+    {
+      "src": "https://cdn-icons-png.flaticon.com/512/3710/3710274.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
