@@ -46,7 +46,7 @@
           -webkit-user-select: text;
       }
 
-      /* Style Brouter-web : bloc unifié avec icônes monochromes SVG épurées */
+      /* Style Brouter-web : blocs unifiés avec icônes monochromes SVG épurées */
       .leaflet-control-brouter { background: #ffffff; border: 2px solid rgba(0,0,0,0.2); background-clip: padding-box; border-radius: 4px; box-shadow: 0 1px 5px rgba(0,0,0,0.4); }
       .brouter-ctrl-btn { width: 30px; height: 30px; line-height: 30px; display: block; text-align: center; text-decoration: none; color: #333; border-bottom: 1px solid #ccc; cursor: pointer; background-color: #fff; position: relative; }
       .brouter-ctrl-btn:last-child { border-bottom: none; }
@@ -97,7 +97,7 @@
       .close-log-btn { position: sticky; top: 0; float: right; background: #ef4444; color: white; border: none; padding: 4px 8px; border-radius: 4px; font-weight: bold; cursor: pointer; z-index: 20; }
       
       .user-loc-icon { background: transparent !important; border: none !important; }
-      .user-loc-arrow { width: 28px; height: 28px; transition: transform 0.6s ease-out; filter: drop-shadow(0px 2px 4px rgba(0,0,0,0.4)); }
+      .user-loc-arrow { width: 28px; height: 28px; transition: transform 0.3s ease-out; filter: drop-shadow(0px 2px 4px rgba(0,0,0,0.4)); }
     </style>
 </head>
 <body>
@@ -173,57 +173,46 @@ function toggleLogs() {
 }
 
 function initMap() {
-    map = L.map('map', {zoomControl: false}).setView([46.5, 2.5], 6);
+    // Boutons de zoom natifs Leaflet conservés dans leur bloc d'origine en haut à gauche
+    map = L.map('map', {zoomControl: true}).setView([46.5, 2.5], 6);
     L.tileLayer('https://{s}.tile.openstreetmap.de/tiles/osmde/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
 
-    // Commandes cartographiques unifiées dans le style Brouter-web (icônes monochromes SVG, taille standardisée)
-    const BrouterControls = L.Control.extend({
+    // Deuxième bloc de boutons Brouter-web en dessous pour les fonctionnalités spécifiques (avec icônes corrigées et épurées)
+    const CustomActionControls = L.Control.extend({
         options: { position: 'topleft' },
         onAdd: function() {
             let container = L.DomUtil.create('div', 'leaflet-control-brouter');
             
-            // Zoom In
+            // 1. Ajustement zoom trace entière (Icône corrigée : carte/itinéraire avec balise)
             let b1 = L.DomUtil.create('a', 'brouter-ctrl-btn', container);
-            b1.innerHTML = '<svg viewBox="0 0 24 24"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>';
-            b1.title = "Zoom avant";
-            b1.onclick = (e) => { e.stopPropagation(); map.zoomIn(); };
+            b1.innerHTML = '<svg viewBox="0 0 24 24"><path d="M20.5 3l-.16.03L15 5.1 9 3 3.36 4.9c-.21.07-.36.25-.36.48V20.5c0 .28.22.5.5.5l.16-.03L9 18.9l6 2.1 5.64-1.9c.21-.07.36-.25.36-.48V3.5c0-.28-.22-.5-.5-.5zM15 19l-6-2.11V5l6 2.11V19z"/></svg>';
+            b1.title = "Zoomer sur toute la trace";
+            b1.onclick = (e) => { e.stopPropagation(); fitTraceBounds(); };
 
-            // Zoom Out
+            // 2. Acquisition ponctuelle GPS (Icône corrigée : cible/crosshair de localisation ponctuelle)
             let b2 = L.DomUtil.create('a', 'brouter-ctrl-btn', container);
-            b2.innerHTML = '<svg viewBox="0 0 24 24"><path d="M19 13H5v-2h14v2z"/></svg>';
-            b2.title = "Zoom arrière";
-            b2.onclick = (e) => { e.stopPropagation(); map.zoomOut(); };
+            b2.innerHTML = '<svg viewBox="0 0 24 24"><path d="M12 8c-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4-1.79-4-4-4zm8.94 3c-.46-4.17-3.77-7.48-7.94-7.94V1h-2v2.06C6.83 3.52 3.52 6.83 3.06 11H1v2h2.06c.46 4.17 3.77 7.48 7.94 7.94V23h2v-2.06c4.17-.46 7.48-3.77 7.94-7.94H23v-2h-2.06zM12 19c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7z"/></svg>';
+            b2.title = "Acquisition GPS ponctuelle";
+            b2.onclick = (e) => { e.stopPropagation(); getSinglePosition(); };
 
-            // Ajustement zoom trace entière
+            // 3. Suivi live navigation (Auto-track)
             let b3 = L.DomUtil.create('a', 'brouter-ctrl-btn', container);
+            b3.id = 'autoTrackBtn';
             b3.innerHTML = '<svg viewBox="0 0 24 24"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg>';
-            b3.title = "Zoomer sur toute la trace";
-            b3.onclick = (e) => { e.stopPropagation(); fitTraceBounds(); };
+            b3.title = "Activer/Désactiver suivi live";
+            b3.onclick = (e) => { e.stopPropagation(); toggleAutoTrack(); };
 
-            // Acquisition ponctuelle GPS
+            // 4. Simulation de suivi navigation (Icône corrigée : symbole lecture/play épuré pour la simulation de trajet)
             let b4 = L.DomUtil.create('a', 'brouter-ctrl-btn', container);
-            b4.innerHTML = '<svg viewBox="0 0 24 24"><path d="M12 8c-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4-1.79-4-4-4zm8.94 3c-.46-4.17-3.77-7.48-7.94-7.94V1h-2v2.06C6.83 3.52 3.52 6.83 3.06 11H1v2h2.06c.46 4.17 3.77 7.48 7.94 7.94V23h2v-2.06c4.17-.46 7.48-3.77 7.94-7.94H23v-2h-2.06zM12 19c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7z"/></svg>';
-            b4.title = "Acquisition GPS ponctuelle";
-            b4.onclick = (e) => { e.stopPropagation(); getSinglePosition(); };
-
-            // Suivi live navigation (Auto-track)
-            let b5 = L.DomUtil.create('a', 'brouter-ctrl-btn', container);
-            b5.id = 'autoTrackBtn';
-            b5.innerHTML = '<svg viewBox="0 0 24 24"><path d="M18.92 6.01C18.72 5.42 18.16 5 17.5 5h-11c-.66 0-1.22.42-1.42 1.01L3 12v8c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h12v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-8l-2.08-5.99zM6.85 7h10.29l1.04 3H5.81l1.04-3zM19 17H5v-4.66l.12-.34h13.76l.12.34V17z"/><circle cx="7.5" cy="14.5" r="1.5"/><circle cx="16.5" cy="14.5" r="1.5"/></svg>';
-            b5.title = "Activer/Désactiver suivi live";
-            b5.onclick = (e) => { e.stopPropagation(); toggleAutoTrack(); };
-
-            // Simulation de suivi navigation
-            let b6 = L.DomUtil.create('a', 'brouter-ctrl-btn', container);
-            b6.id = 'simTrackBtn';
-            b6.innerHTML = '<svg viewBox="0 0 24 24"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/></svg>';
-            b6.title = "Simuler le trajet sur la trace";
-            b6.onclick = (e) => { e.stopPropagation(); toggleSimulation(); };
+            b4.id = 'simTrackBtn';
+            b4.innerHTML = '<svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>';
+            b4.title = "Simuler le trajet sur la trace";
+            b4.onclick = (e) => { e.stopPropagation(); toggleSimulation(); };
 
             return container;
         }
     });
-    map.addControl(new BrouterControls());
+    map.addControl(new CustomActionControls());
 
     // Fermeture du menu déroulant opérateur si clic à l'extérieur
     document.addEventListener('click', (e) => {
@@ -233,7 +222,7 @@ function initMap() {
         }
     });
 
-    log("INIT", "Carte Leaflet initialisée avec style Brouter-web.");
+    log("INIT", "Carte Leaflet initialisée avec blocs de contrôle séparés.");
 }
 
 function toggleOpDropdown(e) {
@@ -312,8 +301,8 @@ function toggleSimulation() {
             let nextPt = gpxPoints[index + 1] || pt;
             let heading = Math.atan2(nextPt.lon - pt.lon, nextPt.lat - pt.lat) * (180 / Math.PI);
             updatePosition(pt.lat, pt.lon, heading);
-            index += Math.max(1, Math.floor(gpxPoints.length / 200));
-        }, 1000);
+            index += Math.max(1, Math.floor(gpxPoints.length / 300));
+        }, 300);
     } else {
         btn.classList.remove('active-track');
         if(simInterval) clearInterval(simInterval);
@@ -324,13 +313,15 @@ function toggleSimulation() {
 function updatePosition(lat, lng, heading) {
     if (!isSimulating && lastValidLat !== null && lastValidLng !== null) {
         let distanceMetres = distanceHaversine(lastValidLat, lastValidLng, lat, lng) * 1000;
-        if (distanceMetres < 15) return;
+        if (distanceMetres < 10) return;
     }
     
     lastValidLat = lat;
     lastValidLng = lng;
 
-    map.panTo([lat, lng]);
+    // Déplacement adouci de la carte (panTo avec animation fluide sans saccades)
+    map.panTo([lat, lng], {animate: true, duration: 0.3});
+    
     let h = heading || 0;
     let svg = `<div style="width:32px;height:32px;"><svg class="user-loc-arrow" style="transform: rotate(${h}deg);" viewBox="0 0 24 24"><path fill="#0284c7" stroke="#ffffff" stroke-width="2" d="M12 2L4.5 20.29l.71.71L12 18l6.79 3 .71-.71z"/></svg></div>`;
     
