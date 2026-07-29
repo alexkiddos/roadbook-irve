@@ -46,18 +46,27 @@
           -webkit-user-select: text;
       }
 
-      .map-custom-ctrl { background: #ffffff !important; width: 34px; height: 34px; line-height: 34px; text-align: center; font-weight: bold; font-size: 18px; color: #0f172a !important; cursor: pointer; border-radius: 6px; border: 1px solid #cbd5e1 !important; box-shadow: 0 2px 6px rgba(0,0,0,0.25); display: flex; align-items: center; justify-content: center; margin-bottom: 6px; }
-      .map-custom-ctrl.active-track { background: #16a34a !important; color: #ffffff !important; }
-      
+      /* Style Brouter-web : bloc unifié avec icônes monochromes SVG épurées */
+      .leaflet-control-brouter { background: #ffffff; border: 2px solid rgba(0,0,0,0.2); background-clip: padding-box; border-radius: 4px; box-shadow: 0 1px 5px rgba(0,0,0,0.4); }
+      .brouter-ctrl-btn { width: 30px; height: 30px; line-height: 30px; display: block; text-align: center; text-decoration: none; color: #333; border-bottom: 1px solid #ccc; cursor: pointer; background-color: #fff; position: relative; }
+      .brouter-ctrl-btn:last-child { border-bottom: none; }
+      .brouter-ctrl-btn:hover { background-color: #f4f4f4; }
+      .brouter-ctrl-btn.active-track { background-color: #16a34a !important; color: #fff !important; }
+      .brouter-ctrl-btn svg { width: 16px; height: 16px; vertical-align: middle; fill: currentColor; }
+
       #main-content { height: 55vh; height: 55dvh; flex: 1; overflow-y: auto; padding: 10px; box-sizing: border-box; }
-      .header-controls { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 10px; font-size: 13px; }
-      .refresh-btn { background: var(--btn-bg); color: var(--btn-text); border: 1px solid var(--border); padding: 5px 9px; border-radius: 6px; cursor: pointer; font-weight: 600; display: inline-flex; align-items: center; justify-content: center; font-size: 14px; }
+      .header-controls { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-bottom: 10px; font-size: 13px; }
+      .refresh-btn { background: var(--btn-bg); color: var(--btn-text); border: 1px solid var(--border); padding: 5px 9px; border-radius: 6px; cursor: pointer; font-weight: 600; display: inline-flex; align-items: center; justify-content: center; font-size: 14px; flex-shrink: 0; }
       
-      /* 4 - Champ km réduit pour 4 digits max (environ 50px) */
-      .input-field { background: var(--input-bg); color: var(--text); border: 1px solid var(--input-border); padding: 6px; width: 50px; border-radius: 6px; font-weight: bold; text-align: center; }
+      /* Champ km réduit pour tenir sans renvoi à la ligne */
+      .input-field { background: var(--input-bg); color: var(--text); border: 1px solid var(--input-border); padding: 5px; width: 42px; border-radius: 6px; font-weight: bold; text-align: center; font-size: 13px; }
       
-      /* 3 - Sélecteur opérateur */
-      .select-field { background: var(--input-bg); color: var(--text); border: 1px solid var(--input-border); padding: 6px; border-radius: 6px; font-size: 13px; max-width: 130px; }
+      /* Dropdown multi-sélection opérateurs */
+      .multi-select-container { position: relative; display: inline-block; font-size: 12px; }
+      .multi-select-header { background: var(--input-bg); color: var(--text); border: 1px solid var(--input-border); padding: 5px 8px; border-radius: 6px; cursor: pointer; font-weight: 500; white-space: nowrap; user-select: none; }
+      .multi-select-dropdown { display: none; position: absolute; top: 100%; left: 0; z-index: 100; background: var(--card-bg); border: 1px solid var(--border); border-radius: 6px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); max-height: 180px; overflow-y: auto; width: 220px; padding: 6px; margin-top: 2px; }
+      .multi-select-dropdown.show { display: block; }
+      .multi-select-item { display: flex; align-items: center; gap: 6px; padding: 3px 0; cursor: pointer; font-size: 11px; }
 
       .station-card { display: flex; flex-direction: column; border-bottom: 1px solid var(--border); padding: 12px 6px; cursor: pointer; background: var(--card-bg); border-radius: 6px; margin-bottom: 4px;}
       .station-main { display: flex; align-items: center; width: 100%; }
@@ -87,7 +96,6 @@
       .log-err { color: #f87171; }
       .close-log-btn { position: sticky; top: 0; float: right; background: #ef4444; color: white; border: none; padding: 4px 8px; border-radius: 4px; font-weight: bold; cursor: pointer; z-index: 20; }
       
-      /* 1 - Suppression du fond blanc autour de l'icône de position (divIcon transparent) */
       .user-loc-icon { background: transparent !important; border: none !important; }
       .user-loc-arrow { width: 28px; height: 28px; transition: transform 0.6s ease-out; filter: drop-shadow(0px 2px 4px rgba(0,0,0,0.4)); }
     </style>
@@ -103,13 +111,19 @@
   <div id="main-content">
     <div class="header-controls">
       <b>km :</b> <input type='number' id='kmInput' class='input-field' value="0" oninput='renderList()' max="9999">
-      <!-- 3 - Filtre opérateurs -->
-      <select id="opFilter" class="select-field" onchange="renderList()">
-          <option value="ALL">Tous opérateurs</option>
-      </select>
+      
+      <!-- Multi-select Opérateurs compact avec affichage au clic -->
+      <div class="multi-select-container">
+          <div class="multi-select-header" onclick="toggleOpDropdown(event)">Opérateurs (Tous) ▼</div>
+          <div id="opDropdownContent" class="multi-select-dropdown">
+              <div class="multi-select-item" onclick="toggleSelectAllOps(true)"><b>[ Tout sélectionner ]</b></div>
+              <div class="multi-select-item" onclick="toggleSelectAllOps(false)"><b>[ Tout désélectionner ]</b></div>
+              <hr style="border:0; border-top:1px solid var(--border); margin:4px 0;">
+              <div id="opCheckboxesList"></div>
+          </div>
+      </div>
       
       <input type="file" id="gpxInput" accept=".gpx" style="display:none;" onchange="handleGPXUpload(event)">
-      <!-- 2 - Boutons avec uniquement les icônes -->
       <button class="refresh-btn" onclick="document.getElementById('gpxInput').click()" title="Charger GPX">📁</button>
       <button class="refresh-btn" onclick="toggleLogs()" title="Logs">📝</button>
       <button class='refresh-btn' onclick="fetchLiveQualicharge()" title="Rafraîchir Live">🔄</button>
@@ -159,48 +173,74 @@ function toggleLogs() {
 }
 
 function initMap() {
-    map = L.map('map').setView([46.5, 2.5], 6);
+    map = L.map('map', {zoomControl: false}).setView([46.5, 2.5], 6);
     L.tileLayer('https://{s}.tile.openstreetmap.de/tiles/osmde/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
 
-    // 5 - Ajout des contrôles cartographiques personnalisés
-    const MapCustomControls = L.Control.extend({
+    // Commandes cartographiques unifiées dans le style Brouter-web (icônes monochromes SVG, taille standardisée)
+    const BrouterControls = L.Control.extend({
         options: { position: 'topleft' },
         onAdd: function() {
-            let container = L.DomUtil.create('div', 'leaflet-bar leaflet-control');
+            let container = L.DomUtil.create('div', 'leaflet-control-brouter');
             
-            // a - Ajustement zoom trace entière
-            let btnTrace = L.DomUtil.create('div', 'map-custom-ctrl', container);
-            btnTrace.innerHTML = '🗺️'; btnTrace.title = "Zoomer sur toute la trace";
-            btnTrace.onclick = (e) => { e.stopPropagation(); fitTraceBounds(); };
+            // Zoom In
+            let b1 = L.DomUtil.create('a', 'brouter-ctrl-btn', container);
+            b1.innerHTML = '<svg viewBox="0 0 24 24"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>';
+            b1.title = "Zoom avant";
+            b1.onclick = (e) => { e.stopPropagation(); map.zoomIn(); };
 
-            // b - Acquisition ponctuelle GPS
-            let btnGpsOnce = L.DomUtil.create('div', 'map-custom-ctrl', container);
-            btnGpsOnce.innerHTML = '📍'; btnGpsOnce.title = "Acquisition GPS ponctuelle";
-            btnGpsOnce.onclick = (e) => { e.stopPropagation(); getSinglePosition(); };
+            // Zoom Out
+            let b2 = L.DomUtil.create('a', 'brouter-ctrl-btn', container);
+            b2.innerHTML = '<svg viewBox="0 0 24 24"><path d="M19 13H5v-2h14v2z"/></svg>';
+            b2.title = "Zoom arrière";
+            b2.onclick = (e) => { e.stopPropagation(); map.zoomOut(); };
 
-            // c - Suivi live navigation (Auto-track)
-            let btnTrack = L.DomUtil.create('div', 'map-custom-ctrl', container);
-            btnTrack.id = 'autoTrackBtn'; btnTrack.innerHTML = '🚗'; btnTrack.title = "Activer/Désactiver suivi live";
-            btnTrack.onclick = (e) => { e.stopPropagation(); toggleAutoTrack(); };
+            // Ajustement zoom trace entière
+            let b3 = L.DomUtil.create('a', 'brouter-ctrl-btn', container);
+            b3.innerHTML = '<svg viewBox="0 0 24 24"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg>';
+            b3.title = "Zoomer sur toute la trace";
+            b3.onclick = (e) => { e.stopPropagation(); fitTraceBounds(); };
 
-            // d - Simulation de suivi navigation
-            let btnSim = L.DomUtil.create('div', 'map-custom-ctrl', container);
-            btnSim.id = 'simTrackBtn'; btnSim.innerHTML = '⏩'; btnSim.title = "Simuler le trajet sur la trace";
-            btnSim.onclick = (e) => { e.stopPropagation(); toggleSimulation(); };
+            // Acquisition ponctuelle GPS
+            let b4 = L.DomUtil.create('a', 'brouter-ctrl-btn', container);
+            b4.innerHTML = '<svg viewBox="0 0 24 24"><path d="M12 8c-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4-1.79-4-4-4zm8.94 3c-.46-4.17-3.77-7.48-7.94-7.94V1h-2v2.06C6.83 3.52 3.52 6.83 3.06 11H1v2h2.06c.46 4.17 3.77 7.48 7.94 7.94V23h2v-2.06c4.17-.46 7.48-3.77 7.94-7.94H23v-2h-2.06zM12 19c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7z"/></svg>';
+            b4.title = "Acquisition GPS ponctuelle";
+            b4.onclick = (e) => { e.stopPropagation(); getSinglePosition(); };
 
-            // e - Zoom entre position actuelle et arrivée
-            let btnZoomDest = L.DomUtil.create('div', 'map-custom-ctrl', container);
-            btnZoomDest.innerHTML = '🎯'; btnZoomDest.title = "Zoom position actuelle -> Arrivée";
-            btnZoomDest.onclick = (e) => { e.stopPropagation(); zoomCurrentToDestination(); };
+            // Suivi live navigation (Auto-track)
+            let b5 = L.DomUtil.create('a', 'brouter-ctrl-btn', container);
+            b5.id = 'autoTrackBtn';
+            b5.innerHTML = '<svg viewBox="0 0 24 24"><path d="M18.92 6.01C18.72 5.42 18.16 5 17.5 5h-11c-.66 0-1.22.42-1.42 1.01L3 12v8c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h12v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-8l-2.08-5.99zM6.85 7h10.29l1.04 3H5.81l1.04-3zM19 17H5v-4.66l.12-.34h13.76l.12.34V17z"/><circle cx="7.5" cy="14.5" r="1.5"/><circle cx="16.5" cy="14.5" r="1.5"/></svg>';
+            b5.title = "Activer/Désactiver suivi live";
+            b5.onclick = (e) => { e.stopPropagation(); toggleAutoTrack(); };
+
+            // Simulation de suivi navigation
+            let b6 = L.DomUtil.create('a', 'brouter-ctrl-btn', container);
+            b6.id = 'simTrackBtn';
+            b6.innerHTML = '<svg viewBox="0 0 24 24"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/></svg>';
+            b6.title = "Simuler le trajet sur la trace";
+            b6.onclick = (e) => { e.stopPropagation(); toggleSimulation(); };
 
             return container;
         }
     });
-    map.addControl(new MapCustomControls());
-    log("INIT", "Carte Leaflet initialisée avec contrôles.");
+    map.addControl(new BrouterControls());
+
+    // Fermeture du menu déroulant opérateur si clic à l'extérieur
+    document.addEventListener('click', (e) => {
+        const container = document.querySelector('.multi-select-container');
+        if (container && !container.contains(e.target)) {
+            document.getElementById('opDropdownContent').classList.remove('show');
+        }
+    });
+
+    log("INIT", "Carte Leaflet initialisée avec style Brouter-web.");
 }
 
-// 5a - Ajustement zoom à l'ensemble de la trace
+function toggleOpDropdown(e) {
+    e.stopPropagation();
+    document.getElementById('opDropdownContent').classList.toggle('show');
+}
+
 function fitTraceBounds() {
     if(gpxLine) {
         map.fitBounds(gpxLine.getBounds());
@@ -210,7 +250,6 @@ function fitTraceBounds() {
     }
 }
 
-// 5b - Acquisition ponctuelle GPS sans suivi live
 function getSinglePosition() {
     if(!navigator.geolocation) {
         log("GPS", "Géolocalisation non supportée.", true);
@@ -228,7 +267,7 @@ function getSinglePosition() {
 }
 
 function toggleAutoTrack() {
-    if(isSimulating) toggleSimulation(); // Stoppe la sim si active
+    if(isSimulating) toggleSimulation();
     isAutoTrack = !isAutoTrack;
     const btn = document.getElementById('autoTrackBtn');
     if (isAutoTrack) {
@@ -249,9 +288,8 @@ function toggleAutoTrack() {
     }
 }
 
-// 5c - Mode simulation du suivi navigation sur la trace
 function toggleSimulation() {
-    if(isAutoTrack) toggleAutoTrack(); // Stoppe le suivi live si actif
+    if(isAutoTrack) toggleAutoTrack();
     isSimulating = !isSimulating;
     const btn = document.getElementById('simTrackBtn');
     
@@ -272,37 +310,14 @@ function toggleSimulation() {
             }
             let pt = gpxPoints[index];
             let nextPt = gpxPoints[index + 1] || pt;
-            // Calcul cap grossier
             let heading = Math.atan2(nextPt.lon - pt.lon, nextPt.lat - pt.lat) * (180 / Math.PI);
             updatePosition(pt.lat, pt.lon, heading);
-            index += Math.max(1, Math.floor(gpxPoints.length / 200)); // Avance par pas
+            index += Math.max(1, Math.floor(gpxPoints.length / 200));
         }, 1000);
     } else {
         btn.classList.remove('active-track');
         if(simInterval) clearInterval(simInterval);
         log("SIM", "Simulation arrêtée.");
-    }
-}
-
-// 5d - Zoom ajustement pour voir la position actuelle et le point d'arrivée
-function zoomCurrentToDestination() {
-    if(gpxPoints.length === 0) {
-        log("MAP", "Tracé GPX manquant pour cibler la destination.", true);
-        return;
-    }
-    let lastPt = gpxPoints[gpxPoints.length - 1];
-    let bounds = L.latLngBounds([[lastPt.lat, lastPt.lon]]);
-    
-    if(userMarker) {
-        bounds.extend(userMarker.getLatLng());
-        map.fitBounds(bounds, {padding: [50, 50]});
-        log("MAP", "Zoom ajusté entre position actuelle et arrivée.");
-    } else if(lastValidLat !== null) {
-        bounds.extend([lastValidLat, lastValidLng]);
-        map.fitBounds(bounds, {padding: [50, 50]});
-        log("MAP", "Zoom ajusté entre position actuelle et arrivée.");
-    } else {
-        log("MAP", "Position actuelle inconnue (activez le GPS ou la simulation).", true);
     }
 }
 
@@ -324,7 +339,6 @@ function updatePosition(lat, lng, heading) {
         let arrow = userMarker.getElement().querySelector('.user-loc-arrow');
         if(arrow) arrow.style.transform = `rotate(${h}deg)`;
     } else {
-        // 1 - Utilisation de 'user-loc-icon' sans fond blanc parasite
         userMarker = L.marker([lat, lng], {icon: L.divIcon({html: svg, iconSize:[32,32], iconAnchor:[16,16], className: 'user-loc-icon'})}).addTo(map);
     }
 
@@ -397,7 +411,7 @@ function fetchAndFilterStations() {
 
 function processStaticData(rawData) {
     let stationsMap = new Map();
-    let operatorsSet = new Set(); // 3 - Pour alimenter le select opérateur
+    let operatorsSet = new Set();
 
     rawData.forEach(row => {
         let pwr = parseFloat(row.puissance_nominale || row.puissance_max_kw || 0);
@@ -424,17 +438,16 @@ function processStaticData(rawData) {
         st.pdcs.push(row.id_pdc_itinerance);
     });
 
-    // 3 - Remplissage du select des opérateurs
-    let opSelect = document.getElementById('opFilter');
-    let currentOp = opSelect.value;
-    opSelect.innerHTML = '<option value="ALL">Tous opérateurs</option>';
+    // Génération des cases à cocher multiples pour les opérateurs
+    let opListContainer = document.getElementById('opCheckboxesList');
+    opListContainer.innerHTML = "";
     Array.from(operatorsSet).sort().forEach(op => {
-        let opt = document.createElement('option');
-        opt.value = op;
-        opt.innerText = op;
-        opSelect.appendChild(opt);
+        let div = document.createElement('div');
+        div.className = 'multi-select-item';
+        div.innerHTML = `<input type="checkbox" value="${op}" checked onchange="onOpCheckboxChange()"> <span>${op}</span>`;
+        opListContainer.appendChild(div);
     });
-    opSelect.value = currentOp;
+    updateOpHeaderLabel();
 
     log("TRAITEMENT", `${stationsMap.size} stations rapides identifiées. Projection sur le GPX...`);
     
@@ -460,6 +473,26 @@ function processStaticData(rawData) {
     log("PROJECTION", `${globalData.length} stations retenues le long du tracé.`);
     renderList();
     fetchLiveQualicharge();
+}
+
+function toggleSelectAllOps(status) {
+    const checkboxes = document.querySelectorAll('#opCheckboxesList input[type="checkbox"]');
+    checkboxes.forEach(cb => cb.checked = status);
+    onOpCheckboxChange();
+}
+
+function onOpCheckboxChange() {
+    updateOpHeaderLabel();
+    renderList();
+}
+
+function updateOpHeaderLabel() {
+    const checkboxes = document.querySelectorAll('#opCheckboxesList input[type="checkbox"]');
+    const checkedCount = Array.from(checkboxes).filter(cb => cb.checked).length;
+    let label = "Opérateurs (Tous)";
+    if(checkedCount === 0) label = "Opérateurs (Aucun)";
+    else if(checkedCount < checkboxes.length) label = `Opérateurs (${checkedCount}/${checkboxes.length})`;
+    document.querySelector('.multi-select-header').innerText = label + " ▼";
 }
 
 function fetchLiveQualicharge() {
@@ -521,7 +554,12 @@ function fetchLiveQualicharge() {
 
 function renderList() {
     const kmFilter = parseFloat(document.getElementById('kmInput').value) || 0;
-    const selectedOp = document.getElementById('opFilter').value; // 3 - Récupération filtre opérateur
+    
+    // Récupération des opérateurs cochés
+    let selectedOps = new Set();
+    document.querySelectorAll('#opCheckboxesList input[type="checkbox"]').forEach(cb => {
+        if(cb.checked) selectedOps.add(cb.value);
+    });
 
     for(let k in markers) map.removeLayer(markers[k]);
     markers = {};
@@ -529,7 +567,7 @@ function renderList() {
     let html = "";
     globalData.forEach((s, i) => {
         if (s.km < kmFilter) return;
-        if (selectedOp !== "ALL" && s.op !== selectedOp) return; // 3 - Application filtre opérateur
+        if (selectedOps.size > 0 && !selectedOps.has(s.op)) return;
         
         let status = s.dispo === 0 ? 'dispo-alert' : (s.dispo <= s.total/3 ? 'dispo-warn' : 'dispo-ok');
         let color = s.dispo === 0 ? '#dc2626' : (s.dispo <= s.total/3 ? '#d97706' : '#16a34a');
