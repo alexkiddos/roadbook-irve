@@ -28,7 +28,6 @@
       .refresh-btn { background: var(--btn-bg); color: var(--btn-text); border: 1px solid var(--border); padding: 5px 9px; border-radius: 6px; cursor: pointer; font-weight: 600; display: inline-flex; align-items: center; justify-content: center; font-size: 14px; }
       .input-field { background: var(--input-bg); color: var(--text); border: 1px solid var(--input-border); padding: 6px; width: 65px; border-radius: 6px; font-weight: bold; text-align: center; }
       
-      /* Card styles from your Python script */
       .station-card { display: flex; flex-direction: column; border-bottom: 1px solid var(--border); padding: 12px 6px; cursor: pointer; background: var(--card-bg); border-radius: 6px; margin-bottom: 4px;}
       .station-main { display: flex; align-items: center; width: 100%; }
       .nav-block { width: 75px; min-width: 75px; border-right: 1px solid var(--border); margin-right: 12px; }
@@ -47,17 +46,39 @@
       .pdc-table { width: 100%; border-collapse: collapse; text-align: left; }
       .pdc-table td, .pdc-table th { padding: 4px; border-bottom: 1px solid var(--border); font-family: monospace; font-size:11px;}
       
-      /* Log Terminal */
-      #terminal-logs { display: none; position: absolute; top: 50px; left: 10px; right: 10px; height: 35vh; background: rgba(15,23,42,0.95); color: #4ade80; font-family: monospace; font-size: 11px; overflow-y: auto; z-index: 9999; padding: 10px; border-radius: 8px; box-shadow: 0 10px 25px rgba(0,0,0,0.5); backdrop-filter: blur(4px); }
+      /* Log Terminal corrigé pour le scroll et le défilement tactile */
+      #terminal-logs { 
+          display: none; 
+          position: absolute; 
+          top: 10px; 
+          left: 10px; 
+          right: 10px; 
+          bottom: 10px; 
+          background: rgba(15,23,42,0.96); 
+          color: #4ade80; 
+          font-family: monospace; 
+          font-size: 11px; 
+          overflow-y: auto; 
+          -webkit-overflow-scrolling: touch; /* Fluide sur iOS/Android */
+          z-index: 9999; 
+          padding: 10px; 
+          padding-bottom: 40px; /* Espace en bas pour ne rien couper */
+          border-radius: 8px; 
+          box-shadow: 0 10px 25px rgba(0,0,0,0.5); 
+          backdrop-filter: blur(4px); 
+      }
       .log-err { color: #f87171; }
+      .close-log-btn { position: sticky; top: 0; float: right; background: #ef4444; color: white; border: none; padding: 4px 8px; border-radius: 4px; font-weight: bold; cursor: pointer; z-index: 10000; }
       
-      /* Tracker */
       .user-loc-arrow { width: 24px; height: 24px; transition: transform 0.6s ease-out; filter: drop-shadow(0px 2px 4px rgba(0,0,0,0.4)); }
     </style>
 </head>
 <body>
   <div id="map">
-      <div id="terminal-logs"></div>
+      <div id="terminal-logs">
+          <button class="close-log-btn" onclick="toggleLogs()">✕ Fermer</button>
+          <div id="log-content"></div>
+      </div>
   </div>
   <div id="main-content">
     <div class="header-controls">
@@ -73,12 +94,10 @@
   </div>
 
 <script>
-// === VARIABLES GLOBALES ===
 let map, gpxLine, userMarker, watchId = null, isAutoTrack = false;
 let gpxPoints = [], globalData = [], markers = {};
 const RAYON_RECHERCHE_KM = 3.0, PUISSANCE_MIN_KW = 100.0, KM_MIN_DEPART = 5.0;
 
-// === FONCTION DE LOGS (LE TERMINAL) ===
 function log(tag, message, isError=false) {
     const ts = new Date().toLocaleTimeString('fr-FR');
     const pref = isError ? "❌ [ERREUR]" : "ℹ️ [INFO]";
@@ -86,18 +105,21 @@ function log(tag, message, isError=false) {
     if (isError) console.error(line); else console.log(line);
     
     const term = document.getElementById('terminal-logs');
-    const div = document.createElement('div');
-    if(isError) div.className = 'log-err';
-    div.innerText = line;
-    term.appendChild(div);
-    term.scrollTop = term.scrollHeight;
-}
-function toggleLogs() {
-    const t = document.getElementById('terminal-logs');
-    t.style.display = t.style.display === 'none' ? 'block' : 'none';
+    const content = document.getElementById('log-content');
+    if (content) {
+        const div = document.createElement('div');
+        if(isError) div.className = 'log-err';
+        div.innerText = line;
+        content.appendChild(div);
+        term.scrollTop = term.scrollHeight; // Auto-scroll vers le bas
+    }
 }
 
-// === INITIALISATION CARTE ===
+function toggleLogs() {
+    const t = document.getElementById('terminal-logs');
+    t.style.display = t.style.display === 'block' ? 'none' : 'block';
+}
+
 function initMap() {
     map = L.map('map').setView([46.5, 2.5], 6);
     L.tileLayer('https://{s}.tile.openstreetmap.de/tiles/osmde/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
@@ -114,7 +136,6 @@ function initMap() {
     log("INIT", "Carte Leaflet initialisée.");
 }
 
-// === GEOLOCALISATION ===
 function toggleAutoTrack() {
     isAutoTrack = !isAutoTrack;
     const btn = document.getElementById('autoTrackBtn');
@@ -148,7 +169,6 @@ function updatePosition(lat, lng, heading) {
         userMarker = L.marker([lat, lng], {icon: L.divIcon({html: svg, iconSize:[32,32], iconAnchor:[16,16]})}).addTo(map);
     }
 
-    // Trouver le point GPX le plus proche pour mettre à jour le KM
     if(gpxPoints.length > 0) {
         let minDist = Infinity, bestKm = 0;
         for(let pt of gpxPoints) {
@@ -160,14 +180,12 @@ function updatePosition(lat, lng, heading) {
     }
 }
 
-// === OUTILS ===
 function distanceHaversine(lat1, lon1, lat2, lon2) {
     const R = 6371.0, dLat = (lat2-lat1)*Math.PI/180, dLon = (lon2-lon1)*Math.PI/180;
     const a = Math.sin(dLat/2)*Math.sin(dLat/2) + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLon/2)*Math.sin(dLon/2);
     return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
 }
 
-// === LECTURE GPX ===
 function handleGPXUpload(event) {
     const file = event.target.files[0];
     if(!file) return;
@@ -192,14 +210,12 @@ function handleGPXUpload(event) {
         gpxLine = L.polyline(gpxPoints.map(p => [p.lat, p.lon]), {color: '#0284c7', weight: 4}).addTo(map);
         map.fitBounds(gpxLine.getBounds());
         
-        // On lance le traitement des stations après le chargement du GPX
-        document.getElementById('terminal-logs').style.display = 'block'; // Ouvre les logs
+        document.getElementById('terminal-logs').style.display = 'block';
         fetchAndFilterStations();
     };
     reader.readAsText(file);
 }
 
-// === TRAITEMENT IRVE ===
 function fetchAndFilterStations() {
     log("ÉTAPE 1", "Recherche du fichier IRVE statique sur data.gouv.fr...");
     fetch("https://www.data.gouv.fr/api/1/datasets/infrastructures-de-recharge-pour-vehicules-electriques-donnees-ouvertes/")
@@ -213,7 +229,7 @@ function fetchAndFilterStations() {
             header: true,
             skipEmptyLines: true,
             complete: function(results) {
-                log("STATIQUE", `${results.data.length} bornes brutes téléchargées. Filtrage en cours...`);
+                log("STATIQUE", `${results.data.length} bornes brutes téléchargées. Filtrage...`);
                 processStaticData(results.data);
             }
         });
@@ -221,9 +237,7 @@ function fetchAndFilterStations() {
 }
 
 function processStaticData(rawData) {
-    // 1. Filtrer puissance (Rapide) et extraire coordonnées
     let stationsMap = new Map();
-    
     rawData.forEach(row => {
         let pwr = parseFloat(row.puissance_nominale || row.puissance_max_kw || 0);
         if (pwr < PUISSANCE_MIN_KW) return;
@@ -246,10 +260,9 @@ function processStaticData(rawData) {
         st.pdcs.push(row.id_pdc_itinerance);
     });
 
-    log("TRAITEMENT", `${stationsMap.size} stations rapides identifiées. Projection sur le tracé GPX...`);
+    log("TRAITEMENT", `${stationsMap.size} stations rapides identifiées. Projection sur le GPX...`);
     
-    // 2. Projeter sur le GPX
-    let sampled = gpxPoints.filter((_, i) => i % 3 === 0); // Echantillonnage
+    let sampled = gpxPoints.filter((_, i) => i % 3 === 0);
     globalData = [];
     
     stationsMap.forEach(st => {
@@ -270,41 +283,44 @@ function processStaticData(rawData) {
     globalData.sort((a,b) => a.km - b.km);
     log("PROJECTION", `${globalData.length} stations retenues le long du tracé.`);
     renderList();
-    fetchLiveQualicharge(); // Lancer automatiquement le live
+    fetchLiveQualicharge();
 }
 
 function fetchLiveQualicharge() {
-    if(globalData.length === 0) return;
-    log("LIVE", "Connexion au flux Qualicharge...");
+    if(globalData.length === 0) {
+        log("LIVE", "Aucune station en mémoire pour lancer le live.", true);
+        return;
+    }
+    log("LIVE", "Connexion au flux Qualicharge (téléchargement CSV en cours)...");
     const liveUrl = "https://www.data.gouv.fr/fr/datasets/r/411443b1-6667-473f-8217-1c57c167408f";
     
     Papa.parse(liveUrl, {
         download: true, header: true, skipEmptyLines: true,
         complete: function(res) {
+            log("LIVE", `Flux Qualicharge chargé (${res.data.length} lignes). Analyse...`);
             let dict = {};
-            res.data.forEach(r => { dict[r.id_pdc_itinerance] = r; });
+            res.data.forEach(r => { if(r.id_pdc_itinerance) dict[r.id_pdc_itinerance] = r; });
             
             globalData.forEach(st => {
                 let countOk = 0;
                 st.liveInfo = [];
                 st.pdcs.forEach(pdcId => {
                     let info = dict[pdcId] || { etat_pdc: "INCONNU", occupation_pdc: "INCONNU", horodatage: "N/A" };
-                    if (["AVAILABLE", "DISPONIBLE"].includes(info.etat_pdc.toUpperCase()) && 
-                        ["FREE", "LIBRE", "FALSE", "0"].includes(info.occupation_pdc.toUpperCase())) {
+                    if (["AVAILABLE", "DISPONIBLE"].includes((info.etat_pdc || "").toUpperCase()) && 
+                        ["FREE", "LIBRE", "FALSE", "0"].includes((info.occupation_pdc || "").toUpperCase())) {
                         countOk++;
                     }
-                    st.liveInfo.push({id: pdcId, etat: info.etat_pdc, occup: info.occupation_pdc, h: info.horodatage.substring(0,16).replace('T',' ')});
+                    st.liveInfo.push({id: pdcId, etat: info.etat_pdc, occup: info.occupation_pdc, h: (info.horodatage || "").substring(0,16).replace('T',' ')});
                 });
                 st.dispo = countOk;
             });
-            log("LIVE", "Disponibilités mises à jour !");
+            log("LIVE", "Disponibilités mises à jour avec succès !");
             renderList();
         },
-        error: function(err) { log("LIVE", "Erreur: " + err.message, true); }
+        error: function(err) { log("LIVE", "Erreur chargement flux live: " + err.message, true); }
     });
 }
 
-// === AFFICHAGE ===
 function renderList() {
     const kmFilter = parseFloat(document.getElementById('kmInput').value) || 0;
     for(let k in markers) map.removeLayer(markers[k]);
@@ -312,17 +328,15 @@ function renderList() {
     
     let html = "";
     globalData.forEach((s, i) => {
-        if (s.km < kmFilter) return; // Filtre
+        if (s.km < kmFilter) return;
         
         let status = s.dispo === 0 ? 'dispo-alert' : (s.dispo <= s.total/3 ? 'dispo-warn' : 'dispo-ok');
         let color = s.dispo === 0 ? '#dc2626' : (s.dispo <= s.total/3 ? '#d97706' : '#16a34a');
         
-        // Marqueur carte
         let m = L.circleMarker([s.lat, s.lng], {radius:8, fillColor:color, color:'#fff', weight:1, fillOpacity:0.9}).addTo(map);
         m.bindPopup(`<b>${s.op}</b><br>${s.nom}`);
         markers[i] = m;
         
-        // PDCs HTML
         let pdcsHtml = s.liveInfo.map(p => `<tr><td>${p.id}</td><td><b>${p.etat}</b></td><td>${p.occup}</td><td>${p.h}</td></tr>`).join('');
         if(!pdcsHtml) pdcsHtml = `<tr><td colspan="4">Aucun statut disponible</td></tr>`;
         
@@ -357,11 +371,10 @@ function renderList() {
     document.getElementById('stationsContainer').innerHTML = html || "<div style='padding:20px; text-align:center;'>Aucune station trouvée après ce kilomètre.</div>";
 }
 
-// Lancement
 initMap();
 if('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('./sw.js').then(() => log("PWA", "Service Worker installé (Mode hors-ligne prêt)."));
+    navigator.serviceWorker.register('./sw.js').then(() => log("PWA", "Service Worker installé."));
   });
 }
 </script>
