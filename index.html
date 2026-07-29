@@ -46,14 +46,19 @@
           -webkit-user-select: text;
       }
 
-      .leaflet-control-zoom-trace { background: #ffffff !important; width: 34px; height: 34px; line-height: 34px; text-align: center; font-weight: bold; font-size: 18px; color: #0f172a !important; cursor: pointer; border-radius: 6px; border: 1px solid #cbd5e1 !important; box-shadow: 0 2px 6px rgba(0,0,0,0.25); display: flex; align-items: center; justify-content: center; }
-      .leaflet-control-zoom-trace.active-track { background: #16a34a !important; color: #ffffff !important; }
+      .map-custom-ctrl { background: #ffffff !important; width: 34px; height: 34px; line-height: 34px; text-align: center; font-weight: bold; font-size: 18px; color: #0f172a !important; cursor: pointer; border-radius: 6px; border: 1px solid #cbd5e1 !important; box-shadow: 0 2px 6px rgba(0,0,0,0.25); display: flex; align-items: center; justify-content: center; margin-bottom: 6px; }
+      .map-custom-ctrl.active-track { background: #16a34a !important; color: #ffffff !important; }
       
       #main-content { height: 55vh; height: 55dvh; flex: 1; overflow-y: auto; padding: 10px; box-sizing: border-box; }
       .header-controls { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 10px; font-size: 13px; }
       .refresh-btn { background: var(--btn-bg); color: var(--btn-text); border: 1px solid var(--border); padding: 5px 9px; border-radius: 6px; cursor: pointer; font-weight: 600; display: inline-flex; align-items: center; justify-content: center; font-size: 14px; }
-      .input-field { background: var(--input-bg); color: var(--text); border: 1px solid var(--input-border); padding: 6px; width: 65px; border-radius: 6px; font-weight: bold; text-align: center; }
       
+      /* 4 - Champ km réduit pour 4 digits max (environ 50px) */
+      .input-field { background: var(--input-bg); color: var(--text); border: 1px solid var(--input-border); padding: 6px; width: 50px; border-radius: 6px; font-weight: bold; text-align: center; }
+      
+      /* 3 - Sélecteur opérateur */
+      .select-field { background: var(--input-bg); color: var(--text); border: 1px solid var(--input-border); padding: 6px; border-radius: 6px; font-size: 13px; max-width: 130px; }
+
       .station-card { display: flex; flex-direction: column; border-bottom: 1px solid var(--border); padding: 12px 6px; cursor: pointer; background: var(--card-bg); border-radius: 6px; margin-bottom: 4px;}
       .station-main { display: flex; align-items: center; width: 100%; }
       .nav-block { width: 75px; min-width: 75px; border-right: 1px solid var(--border); margin-right: 12px; }
@@ -66,7 +71,6 @@
       .op-title { font-weight: 800; font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--op-color); }
       .st-name { font-size: 13px; opacity: 0.9; margin-top: 2px; }
       
-      /* 1 - 3ème bloc réduit au strict nécessaire */
       .tech-block { width: auto; min-width: 55px; text-align: right; border-left: 1px solid var(--border); padding-left: 8px; flex-shrink: 0; }
       
       .dispo-ok { color: var(--dispo-ok); } .dispo-warn { color: var(--dispo-warn); } .dispo-alert { color: var(--dispo-alert); }
@@ -75,7 +79,6 @@
       .pdc-table { width: 100%; border-collapse: collapse; text-align: left; table-layout: fixed; }
       .pdc-table td, .pdc-table th { padding: 4px; border-bottom: 1px solid var(--border); font-family: monospace; font-size: 11px; }
       
-      /* 3 - Réduction de la largeur de la colonne ID PDC avec retour à la ligne */
       .pdc-table th:nth-child(1), .pdc-table td:nth-child(1) { width: 28%; word-break: break-all; overflow-wrap: break-word; }
       .pdc-table th:nth-child(2), .pdc-table td:nth-child(2) { width: 28%; }
       .pdc-table th:nth-child(3), .pdc-table td:nth-child(3) { width: 22%; }
@@ -83,7 +86,10 @@
       
       .log-err { color: #f87171; }
       .close-log-btn { position: sticky; top: 0; float: right; background: #ef4444; color: white; border: none; padding: 4px 8px; border-radius: 4px; font-weight: bold; cursor: pointer; z-index: 20; }
-      .user-loc-arrow { width: 24px; height: 24px; transition: transform 0.6s ease-out; filter: drop-shadow(0px 2px 4px rgba(0,0,0,0.4)); }
+      
+      /* 1 - Suppression du fond blanc autour de l'icône de position (divIcon transparent) */
+      .user-loc-icon { background: transparent !important; border: none !important; }
+      .user-loc-arrow { width: 28px; height: 28px; transition: transform 0.6s ease-out; filter: drop-shadow(0px 2px 4px rgba(0,0,0,0.4)); }
     </style>
 </head>
 <body>
@@ -96,21 +102,27 @@
   
   <div id="main-content">
     <div class="header-controls">
-      <b>km :</b> <input type='number' id='kmInput' class='input-field' value="0" oninput='renderList()'>
+      <b>km :</b> <input type='number' id='kmInput' class='input-field' value="0" oninput='renderList()' max="9999">
+      <!-- 3 - Filtre opérateurs -->
+      <select id="opFilter" class="select-field" onchange="renderList()">
+          <option value="ALL">Tous opérateurs</option>
+      </select>
+      
       <input type="file" id="gpxInput" accept=".gpx" style="display:none;" onchange="handleGPXUpload(event)">
-      <button class="refresh-btn" onclick="document.getElementById('gpxInput').click()">📁 GPX</button>
-      <button class="refresh-btn" onclick="toggleLogs()">📝 Logs</button>
-      <button class='refresh-btn' onclick="fetchLiveQualicharge()">🔄 Live</button>
+      <!-- 2 - Boutons avec uniquement les icônes -->
+      <button class="refresh-btn" onclick="document.getElementById('gpxInput').click()" title="Charger GPX">📁</button>
+      <button class="refresh-btn" onclick="toggleLogs()" title="Logs">📝</button>
+      <button class='refresh-btn' onclick="fetchLiveQualicharge()" title="Rafraîchir Live">🔄</button>
     </div>
     <div id="stationsContainer">
-        <div style="text-align:center; opacity:0.6; padding: 20px;">Veuillez charger un fichier GPX pour commencer.<br><br>💡 (Bouton 📁 GPX)</div>
+        <div style="text-align:center; opacity:0.6; padding: 20px;">Veuillez charger un fichier GPX pour commencer.<br><br>💡 (Bouton 📁)</div>
     </div>
   </div>
 
 <script>
-let map, gpxLine, userMarker, watchId = null, isAutoTrack = false;
+let map, gpxLine, userMarker, watchId = null, isAutoTrack = false, isSimulating = false, simInterval = null;
 let gpxPoints = [], globalData = [], markers = {};
-let lastValidLat = null, lastValidLng = null; // 4 - Pour l'anti-bruit GPS
+let lastValidLat = null, lastValidLng = null;
 const RAYON_RECHERCHE_KM = 3.0, PUISSANCE_MIN_KW = 100.0, KM_MIN_DEPART = 5.0;
 
 function log(tag, message, isError=false) {
@@ -150,19 +162,73 @@ function initMap() {
     map = L.map('map').setView([46.5, 2.5], 6);
     L.tileLayer('https://{s}.tile.openstreetmap.de/tiles/osmde/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
 
-    const AutoTrackCtrl = L.Control.extend({
+    // 5 - Ajout des contrôles cartographiques personnalisés
+    const MapCustomControls = L.Control.extend({
         options: { position: 'topleft' },
         onAdd: function() {
-            let btn = L.DomUtil.create('div', 'leaflet-bar leaflet-control leaflet-control-zoom-trace');
-            btn.id = 'autoTrackBtn'; btn.innerHTML = '🚗'; btn.onclick = (e) => { e.stopPropagation(); toggleAutoTrack(); };
-            return btn;
+            let container = L.DomUtil.create('div', 'leaflet-bar leaflet-control');
+            
+            // a - Ajustement zoom trace entière
+            let btnTrace = L.DomUtil.create('div', 'map-custom-ctrl', container);
+            btnTrace.innerHTML = '🗺️'; btnTrace.title = "Zoomer sur toute la trace";
+            btnTrace.onclick = (e) => { e.stopPropagation(); fitTraceBounds(); };
+
+            // b - Acquisition ponctuelle GPS
+            let btnGpsOnce = L.DomUtil.create('div', 'map-custom-ctrl', container);
+            btnGpsOnce.innerHTML = '📍'; btnGpsOnce.title = "Acquisition GPS ponctuelle";
+            btnGpsOnce.onclick = (e) => { e.stopPropagation(); getSinglePosition(); };
+
+            // c - Suivi live navigation (Auto-track)
+            let btnTrack = L.DomUtil.create('div', 'map-custom-ctrl', container);
+            btnTrack.id = 'autoTrackBtn'; btnTrack.innerHTML = '🚗'; btnTrack.title = "Activer/Désactiver suivi live";
+            btnTrack.onclick = (e) => { e.stopPropagation(); toggleAutoTrack(); };
+
+            // d - Simulation de suivi navigation
+            let btnSim = L.DomUtil.create('div', 'map-custom-ctrl', container);
+            btnSim.id = 'simTrackBtn'; btnSim.innerHTML = '⏩'; btnSim.title = "Simuler le trajet sur la trace";
+            btnSim.onclick = (e) => { e.stopPropagation(); toggleSimulation(); };
+
+            // e - Zoom entre position actuelle et arrivée
+            let btnZoomDest = L.DomUtil.create('div', 'map-custom-ctrl', container);
+            btnZoomDest.innerHTML = '🎯'; btnZoomDest.title = "Zoom position actuelle -> Arrivée";
+            btnZoomDest.onclick = (e) => { e.stopPropagation(); zoomCurrentToDestination(); };
+
+            return container;
         }
     });
-    map.addControl(new AutoTrackCtrl());
-    log("INIT", "Carte Leaflet initialisée.");
+    map.addControl(new MapCustomControls());
+    log("INIT", "Carte Leaflet initialisée avec contrôles.");
+}
+
+// 5a - Ajustement zoom à l'ensemble de la trace
+function fitTraceBounds() {
+    if(gpxLine) {
+        map.fitBounds(gpxLine.getBounds());
+        log("MAP", "Zoom ajusté à la trace GPX.");
+    } else {
+        log("MAP", "Aucune trace GPX chargée.", true);
+    }
+}
+
+// 5b - Acquisition ponctuelle GPS sans suivi live
+function getSinglePosition() {
+    if(!navigator.geolocation) {
+        log("GPS", "Géolocalisation non supportée.", true);
+        return;
+    }
+    log("GPS", "Acquisition d'une position GPS ponctuelle...");
+    navigator.geolocation.getCurrentPosition(
+        pos => {
+            updatePosition(pos.coords.latitude, pos.coords.longitude, pos.coords.heading);
+            log("GPS", "Position ponctuelle acquise avec succès.");
+        },
+        err => log("GPS", "Erreur acquisition : " + err.message, true),
+        { enableHighAccuracy: true, timeout: 10000 }
+    );
 }
 
 function toggleAutoTrack() {
+    if(isSimulating) toggleSimulation(); // Stoppe la sim si active
     isAutoTrack = !isAutoTrack;
     const btn = document.getElementById('autoTrackBtn');
     if (isAutoTrack) {
@@ -173,21 +239,76 @@ function toggleAutoTrack() {
                 err => log("GPS", "Erreur : " + err.message, true),
                 { enableHighAccuracy: true, maximumAge: 3000 }
             );
-            log("GPS", "Suivi activé.");
+            log("GPS", "Suivi live activé.");
         }
     } else {
         btn.classList.remove('active-track');
         if(watchId) navigator.geolocation.clearWatch(watchId);
         lastValidLat = null; lastValidLng = null;
-        log("GPS", "Suivi désactivé.");
+        log("GPS", "Suivi live désactivé.");
+    }
+}
+
+// 5c - Mode simulation du suivi navigation sur la trace
+function toggleSimulation() {
+    if(isAutoTrack) toggleAutoTrack(); // Stoppe le suivi live si actif
+    isSimulating = !isSimulating;
+    const btn = document.getElementById('simTrackBtn');
+    
+    if(isSimulating) {
+        if(gpxPoints.length === 0) {
+            log("SIM", "Impossible de simuler : aucun fichier GPX chargé.", true);
+            isSimulating = false;
+            return;
+        }
+        btn.classList.add('active-track');
+        log("SIM", "Démarrage de la simulation de trajet...");
+        let index = 0;
+        simInterval = setInterval(() => {
+            if(index >= gpxPoints.length) {
+                toggleSimulation();
+                log("SIM", "Simulation terminée (fin du tracé).");
+                return;
+            }
+            let pt = gpxPoints[index];
+            let nextPt = gpxPoints[index + 1] || pt;
+            // Calcul cap grossier
+            let heading = Math.atan2(nextPt.lon - pt.lon, nextPt.lat - pt.lat) * (180 / Math.PI);
+            updatePosition(pt.lat, pt.lon, heading);
+            index += Math.max(1, Math.floor(gpxPoints.length / 200)); // Avance par pas
+        }, 1000);
+    } else {
+        btn.classList.remove('active-track');
+        if(simInterval) clearInterval(simInterval);
+        log("SIM", "Simulation arrêtée.");
+    }
+}
+
+// 5d - Zoom ajustement pour voir la position actuelle et le point d'arrivée
+function zoomCurrentToDestination() {
+    if(gpxPoints.length === 0) {
+        log("MAP", "Tracé GPX manquant pour cibler la destination.", true);
+        return;
+    }
+    let lastPt = gpxPoints[gpxPoints.length - 1];
+    let bounds = L.latLngBounds([[lastPt.lat, lastPt.lon]]);
+    
+    if(userMarker) {
+        bounds.extend(userMarker.getLatLng());
+        map.fitBounds(bounds, {padding: [50, 50]});
+        log("MAP", "Zoom ajusté entre position actuelle et arrivée.");
+    } else if(lastValidLat !== null) {
+        bounds.extend([lastValidLat, lastValidLng]);
+        map.fitBounds(bounds, {padding: [50, 50]});
+        log("MAP", "Zoom ajusté entre position actuelle et arrivée.");
+    } else {
+        log("MAP", "Position actuelle inconnue (activez le GPS ou la simulation).", true);
     }
 }
 
 function updatePosition(lat, lng, heading) {
-    // 4 - Tolérance anti-bruit GPS : si on a déjà une position de référence, on vérifie la distance
-    if (lastValidLat !== null && lastValidLng !== null) {
+    if (!isSimulating && lastValidLat !== null && lastValidLng !== null) {
         let distanceMetres = distanceHaversine(lastValidLat, lastValidLng, lat, lng) * 1000;
-        // Si le déplacement est inférieur à 15 mètres, on ignore la mise à jour pour éviter le bruit et les rendus inutiles
         if (distanceMetres < 15) return;
     }
     
@@ -203,7 +324,8 @@ function updatePosition(lat, lng, heading) {
         let arrow = userMarker.getElement().querySelector('.user-loc-arrow');
         if(arrow) arrow.style.transform = `rotate(${h}deg)`;
     } else {
-        userMarker = L.marker([lat, lng], {icon: L.divIcon({html: svg, iconSize:[32,32], iconAnchor:[16,16]})}).addTo(map);
+        // 1 - Utilisation de 'user-loc-icon' sans fond blanc parasite
+        userMarker = L.marker([lat, lng], {icon: L.divIcon({html: svg, iconSize:[32,32], iconAnchor:[16,16], className: 'user-loc-icon'})}).addTo(map);
     }
 
     if(gpxPoints.length > 0) {
@@ -275,6 +397,8 @@ function fetchAndFilterStations() {
 
 function processStaticData(rawData) {
     let stationsMap = new Map();
+    let operatorsSet = new Set(); // 3 - Pour alimenter le select opérateur
+
     rawData.forEach(row => {
         let pwr = parseFloat(row.puissance_nominale || row.puissance_max_kw || 0);
         if (pwr < PUISSANCE_MIN_KW) return;
@@ -285,10 +409,13 @@ function processStaticData(rawData) {
         let lon = parseFloat(c[0]), lat = parseFloat(c[1]);
         if(isNaN(lat) || isNaN(lon)) return;
         
+        let opName = row.nom_amenageur || "IRVE";
+        operatorsSet.add(opName);
+
         let stId = row.id_station_itinerance || row.nom_station;
         if(!stationsMap.has(stId)) {
             stationsMap.set(stId, {
-                id: stId, nom: row.nom_station, op: row.nom_amenageur || "IRVE",
+                id: stId, nom: row.nom_station, op: opName,
                 lat: lat, lng: lon, pwr: pwr, pdcs: []
             });
         }
@@ -296,6 +423,18 @@ function processStaticData(rawData) {
         if(pwr > st.pwr) st.pwr = pwr;
         st.pdcs.push(row.id_pdc_itinerance);
     });
+
+    // 3 - Remplissage du select des opérateurs
+    let opSelect = document.getElementById('opFilter');
+    let currentOp = opSelect.value;
+    opSelect.innerHTML = '<option value="ALL">Tous opérateurs</option>';
+    Array.from(operatorsSet).sort().forEach(op => {
+        let opt = document.createElement('option');
+        opt.value = op;
+        opt.innerText = op;
+        opSelect.appendChild(opt);
+    });
+    opSelect.value = currentOp;
 
     log("TRAITEMENT", `${stationsMap.size} stations rapides identifiées. Projection sur le GPX...`);
     
@@ -355,12 +494,11 @@ function fetchLiveQualicharge() {
                     st.pdcs.forEach(pdcId => {
                         let info = dict[pdcId] || { etat_pdc: "INCONNU", occupation_pdc: "INCONNU", horodatage: "N/A" };
                         
-                        // 2 - Condition stricte : etat_pdc == en_service ET occupation_pdc == libre
                         let etatClean = (info.etat_pdc || "").trim().toLowerCase();
                         let occupClean = (info.occupation_pdc || "").trim().toLowerCase();
                         
                         let estEnService = ["en_service", "active", "available", "disponible"].includes(etatClean);
-                        etatClean = estEnService ? "en_service" : info.etat_pdc; // Uniformise l'affichage si besoin
+                        etatClean = estEnService ? "en_service" : info.etat_pdc;
 
                         let estLibre = ["libre", "free", "false", "0", "available"].includes(occupClean);
                         occupClean = estLibre ? "libre" : info.occupation_pdc;
@@ -383,12 +521,15 @@ function fetchLiveQualicharge() {
 
 function renderList() {
     const kmFilter = parseFloat(document.getElementById('kmInput').value) || 0;
+    const selectedOp = document.getElementById('opFilter').value; // 3 - Récupération filtre opérateur
+
     for(let k in markers) map.removeLayer(markers[k]);
     markers = {};
     
     let html = "";
     globalData.forEach((s, i) => {
         if (s.km < kmFilter) return;
+        if (selectedOp !== "ALL" && s.op !== selectedOp) return; // 3 - Application filtre opérateur
         
         let status = s.dispo === 0 ? 'dispo-alert' : (s.dispo <= s.total/3 ? 'dispo-warn' : 'dispo-ok');
         let color = s.dispo === 0 ? '#dc2626' : (s.dispo <= s.total/3 ? '#d97706' : '#16a34a');
@@ -428,7 +569,7 @@ function renderList() {
         </div>`;
     });
     
-    document.getElementById('stationsContainer').innerHTML = html || "<div style='padding:20px; text-align:center;'>Aucune station trouvée après ce kilomètre.</div>";
+    document.getElementById('stationsContainer').innerHTML = html || "<div style='padding:20px; text-align:center;'>Aucune station trouvée avec ces critères.</div>";
 }
 
 initMap();
