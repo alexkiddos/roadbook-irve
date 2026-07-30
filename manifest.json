@@ -1,20 +1,26 @@
 {
-  "name": "IRVE Roadbook Live",
   "short_name": "IRVE Live",
-  "start_url": "./index.html",
-  "display": "standalone",
-  "background_color": "#0f172a",
-  "theme_color": "#1e293b",
+  "name": "IRVE Roadbook Live",
+  "description": "Planificateur et suivi en direct des stations de recharge IRVE le long de votre trajet GPX.",
   "icons": [
     {
       "src": "icon-192.png",
+      "type": "image/png",
       "sizes": "192x192",
-      "type": "image/png"
+      "purpose": "any maskable"
     },
     {
       "src": "icon-512.png",
+      "type": "image/png",
       "sizes": "512x512",
-      "type": "image/png"
+      "purpose": "any maskable"
     }
-  ]
+  ],
+  "start_url": "./index.html",
+  "background_color": "#0f172a",
+  "theme_color": "#0f172a",
+  "display": "standalone",
+  "orientation": "portrait",
+  "scope": "./",
+  "lang": "fr-FR"
 }
