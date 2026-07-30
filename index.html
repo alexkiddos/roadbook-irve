@@ -83,10 +83,7 @@
       .info-block { flex: 1; min-width: 0; }
       .op-title { font-weight: 800; font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--op-color); }
       
-      /* MODIFICATION 1 : Nom de la station tronqué sur une seule ligne */
       .st-name { font-size: 13px; opacity: 0.9; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-      
-      /* MODIFICATION 2 : Style pour la commune */
       .st-commune { font-size: 11px; opacity: 0.75; font-weight: 600; margin-top: 1px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
       
       .tech-block { width: auto; min-width: 55px; text-align: right; border-left: 1px solid var(--border); padding-left: 8px; flex-shrink: 0; }
@@ -477,13 +474,13 @@ async function fetchAndFilterStations() {
                 complete: async function(results) {
                     log("STATIQUE", `${results.data.length} bornes brutes téléchargées. Sauvegarde locale...`);
                     
-                    /* MODIFICATION 2 : Prise en compte du nom de la commune */
+                    /* UNIFICATION : On extrait le champ 'commune' proprement sous un seul identifiant */
                     const cleanRows = results.data.map(row => ({
                         puissance_nominale: row.puissance_nominale || row.puissance_max_kw,
                         coordonneesXY: row.coordonneesXY || row.xy_coords || row.coordonnees,
                         nom_amenageur: row.nom_amenageur,
                         nom_station: row.nom_station,
-                        nom_commune: row.nom_commune || row.commune || row.ville || "",
+                        commune: row.consolidated_commune || row.nom_commune || row.commune || row.ville || "Commune inconnue",
                         id_station_itinerance: row.id_station_itinerance,
                         id_pdc_itinerance: row.id_pdc_itinerance
                     }));
@@ -520,7 +517,8 @@ function processStaticData(rawData) {
             stationsMap.set(stId, {
                 id: stId, 
                 nom: row.nom_station, 
-                commune: row.nom_commune || "Commune inconnue",
+                // Extraction sécurisée depuis l'objet unifié
+                commune: row.commune || row.consolidated_commune || row.nom_commune || "Commune inconnue",
                 op: opName,
                 lat: lat, lng: lon, pwr: pwr, pdcs: []
             });
@@ -673,7 +671,6 @@ function renderList() {
         
         let m = L.circleMarker([s.lat, s.lng], {radius:8, fillColor:color, color:'#fff', weight:1, fillOpacity:0.9}).addTo(map);
         
-        /* MODIFICATION 3 : Coordonnées GPS prêtes à être copiées dans Google Maps */
         const coordsStr = `${s.lat.toFixed(5)}, ${s.lng.toFixed(5)}`;
         m.bindPopup(`<b>${s.op}</b><br>${s.nom}<br><div style="margin-top:4px; font-size:11px; opacity:0.8;">📍 <code>${coordsStr}</code></div>`);
         markers[i] = m;
@@ -681,7 +678,6 @@ function renderList() {
         let pdcsHtml = s.liveInfo.map(p => `<tr><td>${p.id}</td><td><b>${p.etat}</b></td><td>${p.occup}</td><td>${p.h}</td></tr>`).join('');
         if(!pdcsHtml) pdcsHtml = `<tr><td colspan="4">Aucun statut disponible</td></tr>`;
         
-        /* MODIFICATION 1 & 2 : Intégration de la commune et blocage du retour à la ligne */
         html += `
         <div class='station-card' onclick="map.setView([${s.lat}, ${s.lng}], 14); markers[${i}].openPopup();">
           <div class='station-main'>
@@ -717,7 +713,7 @@ function renderList() {
 // Initialisation de la carte
 initMap();
 
-// Enregistrement standard du Service Worker
+// Enregistrement du Service Worker
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('./sw.js').then(() => {
