@@ -5,7 +5,7 @@
     <meta charset='utf-8'>
     <title>IRVE Roadbook Live</title>
     
-    <!-- Balises PWA -->
+    <!-- Balises PWA pour la validation Android & mobile -->
     <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
     <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: dark)">
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
@@ -83,7 +83,10 @@
       .info-block { flex: 1; min-width: 0; }
       .op-title { font-weight: 800; font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--op-color); }
       
+      /* MODIFICATION 1 : Nom de la station tronqué sur une seule ligne */
       .st-name { font-size: 13px; opacity: 0.9; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      
+      /* MODIFICATION 2 : Style pour la commune */
       .st-commune { font-size: 11px; opacity: 0.75; font-weight: 600; margin-top: 1px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
       
       .tech-block { width: auto; min-width: 55px; text-align: right; border-left: 1px solid var(--border); padding-left: 8px; flex-shrink: 0; }
@@ -144,11 +147,8 @@ let gpxPoints = [], globalData = [], markers = {};
 let lastValidLat = null, lastValidLng = null;
 const RAYON_RECHERCHE_KM = 3.0, PUISSANCE_MIN_KW = 100.0, KM_MIN_DEPART = 5.0;
 
-// URL DIRECTE DU FICHIER QUALICHARGE STATIQUE
-const QUALICHARGE_STATIC_URL = "https://www.data.gouv.fr/fr/datasets/r/eb76d20a-8501-400e-b336-d85724de5435";
-
 // ============================================================================
-// GESTION DU STOCKAGE LOCAL INDEXEDDB
+// GESTION DU STOCKAGE LOCAL INDEXEDDB (STATIONS IRVE)
 // ============================================================================
 const DB_NAME = 'IRVEDatabase';
 const DB_VERSION = 1;
@@ -176,7 +176,7 @@ async function saveStaticDataToDB(data) {
     const store = tx.objectStore(STORE_NAME);
     store.put(data, 'cached_raw_data');
     store.put(Date.now(), 'last_update_timestamp');
-    log("INDEXEDDB", "💾 Base IRVE statique enregistrée en local.");
+    log("INDEXEDDB", "💾 Base IRVE statique sauvegardée localement.");
   } catch (err) {
     log("INDEXEDDB", "Erreur de sauvegarde : " + err.message, true);
   }
@@ -463,35 +463,30 @@ async function fetchAndFilterStations() {
     }
 
     if (navigator.onLine) {
-        log("STATIQUE", "Téléchargement du fichier Qualicharge via Fetch natif...");
-        
-        try {
-            // Fetch natif pour contourner l'erreur de redirection / CORS
-            const response = await fetch(QUALICHARGE_STATIC_URL);
-            if (!response.ok) throw new Error(`Erreur HTTP ${response.status}`);
+        log("RÉSEAU", "Recherche du fichier IRVE statique sur data.gouv.fr...");
+        fetch("https://www.data.gouv.fr/api/1/datasets/infrastructures-de-recharge-pour-vehicules-electriques-donnees-ouvertes/")
+        .then(res => res.json())
+        .then(data => {
+            const url = data.resources.find(r => r.title.toLowerCase().includes('statique')).latest;
+            log("STATIQUE", `Fichier trouvé. Téléchargement et analyse CSV en cours...`);
             
-            const csvText = await response.text();
-            log("STATIQUE", "Fichier reçu ! Analyse du CSV par PapaParse...");
-
-            Papa.parse(csvText, {
+            Papa.parse(url, {
+                download: true,
                 header: true,
                 skipEmptyLines: true,
-                transformHeader: h => h.trim().replace(/^\ufeff/, ''),
                 complete: async function(results) {
-                    log("STATIQUE", `${results.data.length} lignes brutes reçues. Filtrage des 8 champs cibles...`);
+                    log("STATIQUE", `${results.data.length} bornes brutes téléchargées. Sauvegarde locale...`);
                     
-                    const cleanRows = results.data.map(row => {
-                        return {
-                            nom_operateur: row.nom_operateur ? row.nom_operateur.trim() : "IRVE",
-                            id_station_itinerance: row.id_station_itinerance ? row.id_station_itinerance.trim() : null,
-                            nom_station: row.nom_station ? row.nom_station.trim() : "Station sans nom",
-                            consolidated_commune: row.consolidated_commune ? row.consolidated_commune.trim() : "Commune inconnue",
-                            consolidated_longitude: parseFloat(row.consolidated_longitude),
-                            consolidated_latitude: parseFloat(row.consolidated_latitude),
-                            id_pdc_itinerance: row.id_pdc_itinerance ? row.id_pdc_itinerance.trim() : null,
-                            puissance_nominale: parseFloat(row.puissance_nominale || 0)
-                        };
-                    });
+                    /* MODIFICATION 2 : Prise en compte du nom de la commune */
+                    const cleanRows = results.data.map(row => ({
+                        puissance_nominale: row.puissance_nominale || row.puissance_max_kw,
+                        coordonneesXY: row.coordonneesXY || row.xy_coords || row.coordonnees,
+                        nom_amenageur: row.nom_amenageur,
+                        nom_station: row.nom_station,
+                        nom_commune: row.nom_commune || row.commune || row.ville || "",
+                        id_station_itinerance: row.id_station_itinerance,
+                        id_pdc_itinerance: row.id_pdc_itinerance
+                    }));
 
                     await saveStaticDataToDB(cleanRows);
                     
@@ -500,11 +495,7 @@ async function fetchAndFilterStations() {
                     }
                 }
             });
-
-        } catch (err) {
-            log("STATIQUE", "Erreur lors du téléchargement : " + err.message, true);
-        }
-
+        }).catch(e => log("RÉSEAU", "Erreur réseau: " + e.message, true));
     } else if (!hasLoadedData) {
         log("RÉSEAU", "Vous êtes hors-ligne et aucune base n'a encore été enregistrée.", true);
     }
@@ -514,28 +505,29 @@ function processStaticData(rawData) {
     let stationsMap = new Map();
 
     rawData.forEach(row => {
-        let pwr = row.puissance_nominale;
+        let pwr = parseFloat(row.puissance_nominale || 0);
         if (pwr < PUISSANCE_MIN_KW) return;
         
-        let lat = row.consolidated_latitude;
-        let lon = row.consolidated_longitude;
+        let coordsStr = row.coordonneesXY;
+        if(!coordsStr) return;
+        let c = coordsStr.replace('[','').replace(']','').split(',');
+        let lon = parseFloat(c[0]), lat = parseFloat(c[1]);
         if(isNaN(lat) || isNaN(lon)) return;
         
-        let opName = row.nom_operateur || "IRVE";
+        let opName = row.nom_amenageur || "IRVE";
         let stId = row.id_station_itinerance || row.nom_station;
-        
         if(!stationsMap.has(stId)) {
             stationsMap.set(stId, {
                 id: stId, 
                 nom: row.nom_station, 
-                commune: row.consolidated_commune,
+                commune: row.nom_commune || "Commune inconnue",
                 op: opName,
                 lat: lat, lng: lon, pwr: pwr, pdcs: []
             });
         }
         let st = stationsMap.get(stId);
         if(pwr > st.pwr) st.pwr = pwr;
-        if(row.id_pdc_itinerance) st.pdcs.push(row.id_pdc_itinerance);
+        st.pdcs.push(row.id_pdc_itinerance);
     });
 
     log("TRAITEMENT", `${stationsMap.size} stations rapides identifiées. Projection sur le GPX...`);
@@ -598,50 +590,66 @@ function updateOpHeaderLabel() {
 }
 
 function fetchLiveQualicharge() {
-    if(globalData.length === 0) return;
+    if(globalData.length === 0) {
+        log("LIVE", "Aucune station en mémoire pour lancer le live.", true);
+        return;
+    }
+    
     if(!navigator.onLine) {
         log("LIVE", "🌐 Hors-ligne : Qualicharge Live indisponible.", true);
         return;
     }
 
-    log("LIVE", "Téléchargement du flux dynamique Qualicharge...");
-    const liveUrl = "https://www.data.gouv.fr/fr/datasets/r/411443b1-6667-473f-8217-1c57c167408f";
+    log("LIVE", "Recherche du fichier dynamique Qualicharge sur data.gouv.fr...");
     
-    Papa.parse(liveUrl, {
-        download: true, header: true, skipEmptyLines: true,
-        transformHeader: h => h.trim().replace(/^\ufeff/, ''),
-        complete: function(res) {
-            log("LIVE", `Flux Qualicharge chargé (${res.data.length} lignes). Analyse...`);
-            let dict = {};
-            res.data.forEach(r => { if(r.id_pdc_itinerance) dict[r.id_pdc_itinerance] = r; });
-            
-            globalData.forEach(st => {
-                let countOk = 0;
-                st.liveInfo = [];
-                st.pdcs.forEach(pdcId => {
-                    let info = dict[pdcId] || { etat_pdc: "INCONNU", occupation_pdc: "INCONNU", horodatage: "N/A" };
-                    
-                    let etatClean = (info.etat_pdc || "").trim().toLowerCase();
-                    let occupClean = (info.occupation_pdc || "").trim().toLowerCase();
-                    
-                    let estEnService = ["en_service", "active", "available", "disponible"].includes(etatClean);
-                    etatClean = estEnService ? "en_service" : info.etat_pdc;
+    fetch("https://www.data.gouv.fr/api/1/datasets/infrastructures-de-recharge-pour-vehicules-electriques-donnees-ouvertes/")
+    .then(res => res.json())
+    .then(data => {
+        const resource = data.resources.find(r => 
+            r.title.toLowerCase().includes('dynamique') || 
+            r.title.toLowerCase().includes('disponibilité') ||
+            r.description?.toLowerCase().includes('dynamique')
+        );
+        
+        const liveUrl = resource ? resource.latest : "https://www.data.gouv.fr/fr/datasets/r/411443b1-6667-473f-8217-1c57c167408f";
+        log("LIVE", `URL dynamique trouvée. Téléchargement CSV en cours...`);
+        
+        Papa.parse(liveUrl, {
+            download: true, header: true, skipEmptyLines: true,
+            complete: function(res) {
+                log("LIVE", `Flux Qualicharge chargé (${res.data.length} lignes). Analyse...`);
+                let dict = {};
+                res.data.forEach(r => { if(r.id_pdc_itinerance) dict[r.id_pdc_itinerance] = r; });
+                
+                globalData.forEach(st => {
+                    let countOk = 0;
+                    st.liveInfo = [];
+                    st.pdcs.forEach(pdcId => {
+                        let info = dict[pdcId] || { etat_pdc: "INCONNU", occupation_pdc: "INCONNU", horodatage: "N/A" };
+                        
+                        let etatClean = (info.etat_pdc || "").trim().toLowerCase();
+                        let occupClean = (info.occupation_pdc || "").trim().toLowerCase();
+                        
+                        let estEnService = ["en_service", "active", "available", "disponible"].includes(etatClean);
+                        etatClean = estEnService ? "en_service" : info.etat_pdc;
 
-                    let estLibre = ["libre", "free", "false", "0", "available"].includes(occupClean);
-                    occupClean = estLibre ? "libre" : info.occupation_pdc;
+                        let estLibre = ["libre", "free", "false", "0", "available"].includes(occupClean);
+                        occupClean = estLibre ? "libre" : info.occupation_pdc;
 
-                    if (estEnService && estLibre) {
-                        countOk++;
-                    }
-                    st.liveInfo.push({id: pdcId, etat: etatClean, occup: occupClean, h: (info.horodatage || "").substring(0,16).replace('T',' ')});
+                        if (estEnService && estLibre) {
+                            countOk++;
+                        }
+                        st.liveInfo.push({id: pdcId, etat: etatClean, occup: occupClean, h: (info.horodatage || "").substring(0,16).replace('T',' ')});
+                    });
+                    st.dispo = countOk;
                 });
-                st.dispo = countOk;
-            });
-            log("LIVE", "Disponibilités mises à jour avec succès !");
-            renderList();
-        },
-        error: function(err) { log("LIVE", "Erreur flux live: " + err.message, true); }
-    });
+                log("LIVE", "Disponibilités mises à jour avec succès !");
+                renderList();
+            },
+            error: function(err) { log("LIVE", "Erreur chargement flux live: " + err.message, true); }
+        });
+    })
+    .catch(e => log("LIVE", "Erreur réseau API live: " + e.message, true));
 }
 
 function renderList() {
@@ -665,6 +673,7 @@ function renderList() {
         
         let m = L.circleMarker([s.lat, s.lng], {radius:8, fillColor:color, color:'#fff', weight:1, fillOpacity:0.9}).addTo(map);
         
+        /* MODIFICATION 3 : Coordonnées GPS prêtes à être copiées dans Google Maps */
         const coordsStr = `${s.lat.toFixed(5)}, ${s.lng.toFixed(5)}`;
         m.bindPopup(`<b>${s.op}</b><br>${s.nom}<br><div style="margin-top:4px; font-size:11px; opacity:0.8;">📍 <code>${coordsStr}</code></div>`);
         markers[i] = m;
@@ -672,6 +681,7 @@ function renderList() {
         let pdcsHtml = s.liveInfo.map(p => `<tr><td>${p.id}</td><td><b>${p.etat}</b></td><td>${p.occup}</td><td>${p.h}</td></tr>`).join('');
         if(!pdcsHtml) pdcsHtml = `<tr><td colspan="4">Aucun statut disponible</td></tr>`;
         
+        /* MODIFICATION 1 & 2 : Intégration de la commune et blocage du retour à la ligne */
         html += `
         <div class='station-card' onclick="map.setView([${s.lat}, ${s.lng}], 14); markers[${i}].openPopup();">
           <div class='station-main'>
@@ -704,9 +714,10 @@ function renderList() {
     document.getElementById('stationsContainer').innerHTML = html || "<div style='padding:20px; text-align:center;'>Aucune station trouvée avec ces critères.</div>";
 }
 
-// Initialisation
+// Initialisation de la carte
 initMap();
 
+// Enregistrement standard du Service Worker
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('./sw.js').then(() => {
