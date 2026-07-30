@@ -1,13 +1,18 @@
 {
-  "name": "Roadbook IRVE",
-  "short_name": "Roadbook",
+  "name": "IRVE Roadbook Live",
+  "short_name": "IRVE Live",
   "start_url": "./index.html",
   "display": "standalone",
-  "background_color": "#121212",
-  "theme_color": "#0284c7",
+  "background_color": "#0f172a",
+  "theme_color": "#1e293b",
   "icons": [
     {
-      "src": "https://cdn-icons-png.flaticon.com/512/3710/3710274.png",
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "icon-512.png",
       "sizes": "512x512",
       "type": "image/png"
     }
