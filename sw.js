@@ -1,10 +1,13 @@
 const CACHE_NAME = 'irve-roadbook-v1';
 const MAP_CACHE_NAME = 'osm-tiles-cache-v1';
 
+// Liste des ressources de l'application à mettre en cache
 const ASSETS = [
   './',
   './index.html',
   './manifest.json',
+  './icon-192.png',
+  './icon-512.png',
   'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css',
   'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js',
   'https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js'
