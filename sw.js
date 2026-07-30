@@ -66,7 +66,6 @@ self.addEventListener('fetch', (e) => {
 
   // Interception des tuiles OpenStreetMap
   if (url.includes('tile.openstreetmap.de') || url.includes('tile.openstreetmap.org')) {
-    // Extraction de z, x, y depuis l'URL de la tuile (.../z/x/y.png)
     const match = url.match(/\/(\d+)\/(\d+)\/(\d+)\.png/);
 
     if (match) {
@@ -74,8 +73,8 @@ self.addEventListener('fetch', (e) => {
       const x = parseInt(match[2], 10);
       const y = parseInt(match[3], 10);
 
-      // Condition : Uniquement pour la France ET entre le zoom 6 et 10
-      const isFranceZoomRange = z >= 6 && z <= 10 && isTileInFrance(x, y, z);
+      // Condition mise à jour : Uniquement pour la France ET entre le zoom 4 et 10
+      const isFranceZoomRange = z >= 4 && z <= 10 && isTileInFrance(x, y, z);
 
       if (isFranceZoomRange) {
         e.respondWith(
@@ -100,7 +99,7 @@ self.addEventListener('fetch', (e) => {
     }
   }
 
-  // Gestion réseau standard pour le reste des fichiers de l'app
+  // Gestion réseau standard pour le reste des fichiers
   e.respondWith(
     fetch(e.request).catch(() => caches.match(e.request))
   );
