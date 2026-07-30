@@ -230,13 +230,13 @@ function toggleLogs() {
 }
 
 function initMap() {
-    // Zoom réglé à 5 pour englober toute la France au démarrage
+    // Zoom 5 au démarrage pour cadrer la France entière
     map = L.map('map', {zoomControl: true}).setView([46.603354, 1.888334], 5);
     
+    // Pas de maxNativeZoom : téléchargement de tuiles HD en ligne, fallback local hors-ligne géré par sw.js
     L.tileLayer('https://{s}.tile.openstreetmap.de/tiles/osmde/{z}/{x}/{y}.png', { 
       minZoom: 4,
-      maxZoom: 19, 
-      maxNativeZoom: 10 
+      maxZoom: 19
     }).addTo(map);
 
     const CustomActionControls = L.Control.extend({
