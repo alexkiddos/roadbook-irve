@@ -5,7 +5,7 @@
     <meta charset='utf-8'>
     <title>IRVE Roadbook Live</title>
     
-    <!-- Balises PWA pour la validation Android & mobile -->
+    <!-- Balises PWA -->
     <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
     <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: dark)">
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
@@ -144,8 +144,11 @@ let gpxPoints = [], globalData = [], markers = {};
 let lastValidLat = null, lastValidLng = null;
 const RAYON_RECHERCHE_KM = 3.0, PUISSANCE_MIN_KW = 100.0, KM_MIN_DEPART = 5.0;
 
+// URL DIRECTE DE LA RESSOURCE QUALICHARGE STATIQUE
+const QUALICHARGE_STATIC_URL = "https://www.data.gouv.fr/fr/datasets/r/eb76d20a-8501-400e-b336-d85724de5435";
+
 // ============================================================================
-// GESTION DU STOCKAGE LOCAL INDEXEDDB (STATIONS IRVE)
+// GESTION DU STOCKAGE LOCAL INDEXEDDB
 // ============================================================================
 const DB_NAME = 'IRVEDatabase';
 const DB_VERSION = 1;
@@ -173,7 +176,7 @@ async function saveStaticDataToDB(data) {
     const store = tx.objectStore(STORE_NAME);
     store.put(data, 'cached_raw_data');
     store.put(Date.now(), 'last_update_timestamp');
-    log("INDEXEDDB", "💾 Base IRVE statique sauvegardée localement.");
+    log("INDEXEDDB", "💾 Base IRVE statique enregistrée en local.");
   } catch (err) {
     log("INDEXEDDB", "Erreur de sauvegarde : " + err.message, true);
   }
@@ -460,39 +463,41 @@ async function fetchAndFilterStations() {
     }
 
     if (navigator.onLine) {
-        log("RÉSEAU", "Recherche du fichier IRVE statique sur data.gouv.fr...");
-        fetch("https://www.data.gouv.fr/api/1/datasets/infrastructures-de-recharge-pour-vehicules-electriques-donnees-ouvertes/")
-        .then(res => res.json())
-        .then(data => {
-            const url = data.resources.find(r => r.title.toLowerCase().includes('statique')).latest;
-            log("STATIQUE", `Fichier trouvé. Téléchargement et analyse CSV en cours...`);
-            
-            Papa.parse(url, {
-                download: true,
-                header: true,
-                skipEmptyLines: true,
-                complete: async function(results) {
-                    log("STATIQUE", `${results.data.length} bornes brutes téléchargées. Sauvegarde locale...`);
-                    
-                    /* UNIFICATION : On extrait le champ 'commune' proprement sous un seul identifiant */
-                    const cleanRows = results.data.map(row => ({
-                        puissance_nominale: row.puissance_nominale || row.puissance_max_kw,
-                        coordonneesXY: row.coordonneesXY || row.xy_coords || row.coordonnees,
-                        nom_amenageur: row.nom_amenageur,
-                        nom_station: row.nom_station,
-                        commune: row.consolidated_commune || row.nom_commune || row.commune || row.ville || "Commune inconnue",
-                        id_station_itinerance: row.id_station_itinerance,
-                        id_pdc_itinerance: row.id_pdc_itinerance
-                    }));
+        log("STATIQUE", "Téléchargement du fichier Qualicharge (eb76d20a)...");
+        
+        Papa.parse(QUALICHARGE_STATIC_URL, {
+            download: true,
+            header: true,
+            skipEmptyLines: true,
+            // Nettoyage impératif des entêtes (suppression des espaces et du BOM UTF-8)
+            transformHeader: h => h.trim().replace(/^\ufeff/, ''),
+            complete: async function(results) {
+                log("STATIQUE", `${results.data.length} bornes brutes téléchargées. Extraction des champs cibles...`);
+                
+                // Mappage strict des 8 champs spécifiés
+                const cleanRows = results.data.map(row => {
+                    return {
+                        nom_operateur: row.nom_operateur ? row.nom_operateur.trim() : "IRVE",
+                        id_station_itinerance: row.id_station_itinerance ? row.id_station_itinerance.trim() : null,
+                        nom_station: row.nom_station ? row.nom_station.trim() : "Station sans nom",
+                        consolidated_commune: row.consolidated_commune ? row.consolidated_commune.trim() : "Commune inconnue",
+                        consolidated_longitude: parseFloat(row.consolidated_longitude),
+                        consolidated_latitude: parseFloat(row.consolidated_latitude),
+                        id_pdc_itinerance: row.id_pdc_itinerance ? row.id_pdc_itinerance.trim() : null,
+                        puissance_nominale: parseFloat(row.puissance_nominale || 0)
+                    };
+                });
 
-                    await saveStaticDataToDB(cleanRows);
-                    
-                    if (!hasLoadedData) {
-                        processStaticData(cleanRows);
-                    }
+                await saveStaticDataToDB(cleanRows);
+                
+                if (!hasLoadedData) {
+                    processStaticData(cleanRows);
                 }
-            });
-        }).catch(e => log("RÉSEAU", "Erreur réseau: " + e.message, true));
+            },
+            error: function(err) {
+                log("STATIQUE", "Erreur lors du téléchargement : " + err.message, true);
+            }
+        });
     } else if (!hasLoadedData) {
         log("RÉSEAU", "Vous êtes hors-ligne et aucune base n'a encore été enregistrée.", true);
     }
@@ -502,30 +507,28 @@ function processStaticData(rawData) {
     let stationsMap = new Map();
 
     rawData.forEach(row => {
-        let pwr = parseFloat(row.puissance_nominale || 0);
+        let pwr = row.puissance_nominale;
         if (pwr < PUISSANCE_MIN_KW) return;
         
-        let coordsStr = row.coordonneesXY;
-        if(!coordsStr) return;
-        let c = coordsStr.replace('[','').replace(']','').split(',');
-        let lon = parseFloat(c[0]), lat = parseFloat(c[1]);
+        let lat = row.consolidated_latitude;
+        let lon = row.consolidated_longitude;
         if(isNaN(lat) || isNaN(lon)) return;
         
-        let opName = row.nom_amenageur || "IRVE";
+        let opName = row.nom_operateur || "IRVE";
         let stId = row.id_station_itinerance || row.nom_station;
+        
         if(!stationsMap.has(stId)) {
             stationsMap.set(stId, {
                 id: stId, 
                 nom: row.nom_station, 
-                // Extraction sécurisée depuis l'objet unifié
-                commune: row.commune || row.consolidated_commune || row.nom_commune || "Commune inconnue",
+                commune: row.consolidated_commune,
                 op: opName,
                 lat: lat, lng: lon, pwr: pwr, pdcs: []
             });
         }
         let st = stationsMap.get(stId);
         if(pwr > st.pwr) st.pwr = pwr;
-        st.pdcs.push(row.id_pdc_itinerance);
+        if(row.id_pdc_itinerance) st.pdcs.push(row.id_pdc_itinerance);
     });
 
     log("TRAITEMENT", `${stationsMap.size} stations rapides identifiées. Projection sur le GPX...`);
@@ -588,66 +591,50 @@ function updateOpHeaderLabel() {
 }
 
 function fetchLiveQualicharge() {
-    if(globalData.length === 0) {
-        log("LIVE", "Aucune station en mémoire pour lancer le live.", true);
-        return;
-    }
-    
+    if(globalData.length === 0) return;
     if(!navigator.onLine) {
         log("LIVE", "🌐 Hors-ligne : Qualicharge Live indisponible.", true);
         return;
     }
 
-    log("LIVE", "Recherche du fichier dynamique Qualicharge sur data.gouv.fr...");
+    log("LIVE", "Téléchargement du flux dynamique Qualicharge...");
+    const liveUrl = "https://www.data.gouv.fr/fr/datasets/r/411443b1-6667-473f-8217-1c57c167408f";
     
-    fetch("https://www.data.gouv.fr/api/1/datasets/infrastructures-de-recharge-pour-vehicules-electriques-donnees-ouvertes/")
-    .then(res => res.json())
-    .then(data => {
-        const resource = data.resources.find(r => 
-            r.title.toLowerCase().includes('dynamique') || 
-            r.title.toLowerCase().includes('disponibilité') ||
-            r.description?.toLowerCase().includes('dynamique')
-        );
-        
-        const liveUrl = resource ? resource.latest : "https://www.data.gouv.fr/fr/datasets/r/411443b1-6667-473f-8217-1c57c167408f";
-        log("LIVE", `URL dynamique trouvée. Téléchargement CSV en cours...`);
-        
-        Papa.parse(liveUrl, {
-            download: true, header: true, skipEmptyLines: true,
-            complete: function(res) {
-                log("LIVE", `Flux Qualicharge chargé (${res.data.length} lignes). Analyse...`);
-                let dict = {};
-                res.data.forEach(r => { if(r.id_pdc_itinerance) dict[r.id_pdc_itinerance] = r; });
-                
-                globalData.forEach(st => {
-                    let countOk = 0;
-                    st.liveInfo = [];
-                    st.pdcs.forEach(pdcId => {
-                        let info = dict[pdcId] || { etat_pdc: "INCONNU", occupation_pdc: "INCONNU", horodatage: "N/A" };
-                        
-                        let etatClean = (info.etat_pdc || "").trim().toLowerCase();
-                        let occupClean = (info.occupation_pdc || "").trim().toLowerCase();
-                        
-                        let estEnService = ["en_service", "active", "available", "disponible"].includes(etatClean);
-                        etatClean = estEnService ? "en_service" : info.etat_pdc;
+    Papa.parse(liveUrl, {
+        download: true, header: true, skipEmptyLines: true,
+        transformHeader: h => h.trim().replace(/^\ufeff/, ''),
+        complete: function(res) {
+            log("LIVE", `Flux Qualicharge chargé (${res.data.length} lignes). Analyse...`);
+            let dict = {};
+            res.data.forEach(r => { if(r.id_pdc_itinerance) dict[r.id_pdc_itinerance] = r; });
+            
+            globalData.forEach(st => {
+                let countOk = 0;
+                st.liveInfo = [];
+                st.pdcs.forEach(pdcId => {
+                    let info = dict[pdcId] || { etat_pdc: "INCONNU", occupation_pdc: "INCONNU", horodatage: "N/A" };
+                    
+                    let etatClean = (info.etat_pdc || "").trim().toLowerCase();
+                    let occupClean = (info.occupation_pdc || "").trim().toLowerCase();
+                    
+                    let estEnService = ["en_service", "active", "available", "disponible"].includes(etatClean);
+                    etatClean = estEnService ? "en_service" : info.etat_pdc;
 
-                        let estLibre = ["libre", "free", "false", "0", "available"].includes(occupClean);
-                        occupClean = estLibre ? "libre" : info.occupation_pdc;
+                    let estLibre = ["libre", "free", "false", "0", "available"].includes(occupClean);
+                    occupClean = estLibre ? "libre" : info.occupation_pdc;
 
-                        if (estEnService && estLibre) {
-                            countOk++;
-                        }
-                        st.liveInfo.push({id: pdcId, etat: etatClean, occup: occupClean, h: (info.horodatage || "").substring(0,16).replace('T',' ')});
-                    });
-                    st.dispo = countOk;
+                    if (estEnService && estLibre) {
+                        countOk++;
+                    }
+                    st.liveInfo.push({id: pdcId, etat: etatClean, occup: occupClean, h: (info.horodatage || "").substring(0,16).replace('T',' ')});
                 });
-                log("LIVE", "Disponibilités mises à jour avec succès !");
-                renderList();
-            },
-            error: function(err) { log("LIVE", "Erreur chargement flux live: " + err.message, true); }
-        });
-    })
-    .catch(e => log("LIVE", "Erreur réseau API live: " + e.message, true));
+                st.dispo = countOk;
+            });
+            log("LIVE", "Disponibilités mises à jour avec succès !");
+            renderList();
+        },
+        error: function(err) { log("LIVE", "Erreur flux live: " + err.message, true); }
+    });
 }
 
 function renderList() {
@@ -710,10 +697,9 @@ function renderList() {
     document.getElementById('stationsContainer').innerHTML = html || "<div style='padding:20px; text-align:center;'>Aucune station trouvée avec ces critères.</div>";
 }
 
-// Initialisation de la carte
+// Initialisation
 initMap();
 
-// Enregistrement du Service Worker
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('./sw.js').then(() => {
