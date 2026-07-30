@@ -1,7 +1,6 @@
 const CACHE_NAME = 'irve-roadbook-v1';
 const MAP_CACHE_NAME = 'osm-tiles-cache-v1';
 
-// Liste des ressources de l'application à mettre en cache
 const ASSETS = [
   './',
   './index.html',
@@ -13,17 +12,18 @@ const ASSETS = [
   'https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js'
 ];
 
-// En-tête personnalisé pour respecter la politique des serveurs OSM
 const CUSTOM_HEADERS = {
   'User-Agent': 'IRVERoadbookLive-PWA/1.0'
 };
 
-// ----------------------------------------------------------------------------
-// INSTALLATION & ACTIVATION
-// ----------------------------------------------------------------------------
+// INSTALLATION : On télécharge chaque asset individuellement pour éviter qu'une seule 404 ne bloque tout
 self.addEventListener('install', (e) => {
   e.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(ASSETS))
+    caches.open(CACHE_NAME).then((cache) => {
+      return Promise.allSettled(
+        ASSETS.map(asset => cache.add(asset))
+      );
+    })
   );
   self.skipWaiting();
 });
@@ -43,21 +43,15 @@ self.addEventListener('activate', (e) => {
   self.clients.claim();
 });
 
-// ----------------------------------------------------------------------------
-// INTERCEPTION DES REQUÊTES (FETCH & CACHE)
-// ----------------------------------------------------------------------------
 self.addEventListener('fetch', (e) => {
   const url = e.request.url;
 
-  // Interception spécifique pour les tuiles de cartes (OSM.de ou OSM standard)
   if (url.includes('tile.openstreetmap.de') || url.includes('tile.openstreetmap.org')) {
     e.respondWith(
       caches.open(MAP_CACHE_NAME).then(async (cache) => {
-        // 1. Stratégie Cache-First : Si la tuile a déjà été affichée, on la sert immédiatement
         const cachedResponse = await cache.match(e.request);
         if (cachedResponse) return cachedResponse;
 
-        // 2. Sinon, on va la chercher sur le réseau et on la sauvegarde au passage
         try {
           const networkResponse = await fetch(e.request, { headers: CUSTOM_HEADERS });
           if (networkResponse.status === 200) {
@@ -65,7 +59,6 @@ self.addEventListener('fetch', (e) => {
           }
           return networkResponse;
         } catch (err) {
-          // Si le réseau échoue et pas de cache, retourne undefined (Leaflet gèrera le manque de tuile)
           return cachedResponse;
         }
       })
@@ -73,7 +66,6 @@ self.addEventListener('fetch', (e) => {
     return;
   }
 
-  // Comportement par défaut pour les ressources statiques de l'application (HTML, JS, CSS)
   e.respondWith(
     fetch(e.request).catch(() => caches.match(e.request))
   );
