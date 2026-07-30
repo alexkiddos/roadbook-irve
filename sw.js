@@ -28,7 +28,6 @@ function isTileInFrance(x, y, z) {
   );
 }
 
-// Fonction magique : calcule les coordonnées de la tuile au Zoom 10
 function getParentTileUrl(baseUrl, x, y, z, targetZ = 10) {
   const factor = Math.pow(2, z - targetZ);
   const parentX = Math.floor(x / factor);
@@ -52,6 +51,53 @@ self.addEventListener('activate', (e) => {
   self.clients.claim();
 });
 
+// Écoute des messages envoyés depuis l'application (index.html)
+self.addEventListener('message', async (event) => {
+  if (event.data && event.data.action === 'PRECACHE_TILES') {
+    const urls = event.data.urls;
+    const cache = await caches.open(MAP_CACHE_NAME);
+    let downloaded = 0;
+    const total = urls.length;
+
+    // Envoi de messages de statut aux pages Web connectées
+    const sendLog = (msg, isErr = false) => {
+      self.clients.matchAll().then(clients => {
+        clients.forEach(c => c.postMessage({ type: 'TILE_LOG', message: msg, isError: isErr }));
+      });
+    };
+
+    sendLog(`📦 Début du téléchargement de ${total} tuiles pour la France...`);
+
+    // Téléchargement par paquets de 15 requêtes simultanées pour ne pas bloquer le réseau
+    const BATCH_SIZE = 15;
+    for (let i = 0; i < urls.length; i += BATCH_SIZE) {
+      const chunk = urls.slice(i, i + BATCH_SIZE);
+      await Promise.all(
+        chunk.map(async (url) => {
+          try {
+            const cached = await cache.match(url);
+            if (!cached) {
+              const resp = await fetch(url);
+              if (resp.status === 200) await cache.put(url, resp);
+            }
+          } catch (err) {
+            // Ignorer silencieusement les échecs ponctuels
+          } finally {
+            downloaded++;
+          }
+        })
+      );
+
+      // Notification tous les 10% de progression
+      if (downloaded % Math.floor(total / 10) === 0 || downloaded === total) {
+        const pct = Math.round((downloaded / total) * 100);
+        sendLog(`🗺️ Téléchargement carte de France : ${pct}% (${downloaded}/${total})`);
+      }
+    }
+    sendLog(`✅ Téléchargement de la carte de France terminé et stocké en local !`);
+  }
+});
+
 self.addEventListener('fetch', (e) => {
   const url = e.request.url;
 
@@ -65,29 +111,24 @@ self.addEventListener('fetch', (e) => {
 
       e.respondWith(
         caches.open(MAP_CACHE_NAME).then(async (cache) => {
-          // 1. Si la tuile exacte est en cache (par ex: zoom 4 à 10), on la renvoie
           const cachedResponse = await cache.match(e.request);
           if (cachedResponse) return cachedResponse;
 
-          // 2. Sinon, on tente de la récupérer sur le réseau (mode En Ligne -> Tuiles HD)
           try {
             const networkResponse = await fetch(e.request);
             if (networkResponse.status === 200) {
-              // On sauvegarde en cache uniquement si c'est dans la plage France 4-10
               if (z >= 4 && z <= 10 && isTileInFrance(x, y, z)) {
                 cache.put(e.request, networkResponse.clone());
               }
             }
             return networkResponse;
           } catch (err) {
-            // 3. ÉCHEC RÉSEAU (Mode Hors-Ligne) ET Zoom > 10
-            // On va chercher la tuile parent correspondant au Zoom 10 déjà stockée !
             if (z > 10) {
               const parentUrl = getParentTileUrl(url, x, y, z, 10);
               const parentCached = await cache.match(parentUrl);
               if (parentCached) return parentCached;
             }
-            return cachedResponse; // Renvoie undefined / 404 si vraiment introuvable
+            return cachedResponse;
           }
         })
       );
