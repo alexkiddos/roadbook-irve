@@ -82,11 +82,7 @@
       .detour-line { font-size: 11px; opacity: 0.7; margin-left: 18px; margin-top: 2px; }
       .info-block { flex: 1; min-width: 0; }
       .op-title { font-weight: 800; font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--op-color); }
-      
-      /* MODIFICATION 1 : Nom de la station tronqué sur une seule ligne */
       .st-name { font-size: 13px; opacity: 0.9; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-      
-      /* MODIFICATION 2 : Style pour la commune */
       .st-commune { font-size: 11px; opacity: 0.75; font-weight: 600; margin-top: 1px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
       
       .tech-block { width: auto; min-width: 55px; text-align: right; border-left: 1px solid var(--border); padding-left: 8px; flex-shrink: 0; }
@@ -147,12 +143,16 @@ let gpxPoints = [], globalData = [], markers = {};
 let lastValidLat = null, lastValidLng = null;
 const RAYON_RECHERCHE_KM = 3.0, PUISSANCE_MIN_KW = 100.0, KM_MIN_DEPART = 5.0;
 
+// URL officielle de la table de correspondance INSEE Communes
+const COMMUNE_DB_URL = "https://www.data.gouv.fr/fr/datasets/r/d431e803-b1d9-4914-9418-86866f7f2b96";
+
 // ============================================================================
-// GESTION DU STOCKAGE LOCAL INDEXEDDB (STATIONS IRVE)
+// GESTION DU STOCKAGE LOCAL INDEXEDDB (STATIONS ET COMMUNES)
 // ============================================================================
 const DB_NAME = 'IRVEDatabase';
-const DB_VERSION = 1;
-const STORE_NAME = 'stations';
+const DB_VERSION = 2; // Incrementation pour maj du schéma
+const STORE_STATIONS = 'stations';
+const STORE_COMMUNES = 'communes';
 const MAX_AGE_DAYS = 7;
 
 function openDB() {
@@ -160,8 +160,11 @@ function openDB() {
     const request = indexedDB.open(DB_NAME, DB_VERSION);
     request.onupgradeneeded = (e) => {
       const db = e.target.result;
-      if (!db.objectStoreNames.contains(STORE_NAME)) {
-        db.createObjectStore(STORE_NAME);
+      if (!db.objectStoreNames.contains(STORE_STATIONS)) {
+        db.createObjectStore(STORE_STATIONS);
+      }
+      if (!db.objectStoreNames.contains(STORE_COMMUNES)) {
+        db.createObjectStore(STORE_COMMUNES);
       }
     };
     request.onsuccess = (e) => resolve(e.target.result);
@@ -169,24 +172,94 @@ function openDB() {
   });
 }
 
+// ---------------- GESTION BASE COMMUNES ----------------
+async function loadOrFetchCommunesDB() {
+    try {
+        const db = await openDB();
+        const tx = db.transaction(STORE_COMMUNES, 'readonly');
+        const count = await new Promise(r => {
+            const req = tx.objectStore(STORE_COMMUNES).count();
+            req.onsuccess = () => r(req.result);
+        });
+
+        if (count > 0) {
+            log("COMMUNES", `Base de communes locale trouvée (${count} communes).`);
+            return;
+        }
+
+        if (!navigator.onLine) {
+            log("COMMUNES", "🌐 Hors-ligne : Impossible d'initialiser le dictionnaire des communes.", true);
+            return;
+        }
+
+        log("COMMUNES", "Téléchargement de la base officielle des communes de France...");
+        Papa.parse(COMMUNE_DB_URL, {
+            download: true,
+            header: true,
+            skipEmptyLines: true,
+            complete: async function(results) {
+                log("COMMUNES", `Analyse du fichier INSEE (${results.data.length} communes)...`);
+                const writeTx = db.transaction(STORE_COMMUNES, 'readwrite');
+                const store = writeTx.objectStore(STORE_COMMUNES);
+                
+                results.data.forEach(row => {
+                    const code = row.code_commune || row.com || row.code_insee || row.CODE_INSEE;
+                    const nom = row.nom_commune_postal || row.nom_commune || row.libelle || row.NCC;
+                    if (code && nom) {
+                        store.put(nom, code);
+                    }
+                });
+
+                writeTx.oncomplete = () => log("COMMUNES", "💾 Base officielle des communes enregistrée localement dans IndexedDB.");
+            },
+            error: (err) => log("COMMUNES", "Erreur téléchargement communes : " + err.message, true)
+        });
+    } catch (e) {
+        log("COMMUNES", "Erreur IndexedDB communes : " + e.message, true);
+    }
+}
+
+async function getCommunesMap(codesInseeSet) {
+    const communesMap = new Map();
+    try {
+        const db = await openDB();
+        const tx = db.transaction(STORE_COMMUNES, 'readonly');
+        const store = tx.objectStore(STORE_COMMUNES);
+
+        for (let code of codesInseeSet) {
+            if (!code) continue;
+            const nom = await new Promise(r => {
+                const req = store.get(code);
+                req.onsuccess = () => r(req.result);
+                req.onerror = () => r(null);
+            });
+            if (nom) communesMap.set(code, nom);
+        }
+    } catch (e) {
+        log("COMMUNES", "Erreur lecture des communes localement : " + e.message, true);
+    }
+    return communesMap;
+}
+
+// ---------------- GESTION BASE STATIONS ----------------
 async function saveStaticDataToDB(data) {
   try {
     const db = await openDB();
-    const tx = db.transaction(STORE_NAME, 'readwrite');
-    const store = tx.objectStore(STORE_NAME);
+    const tx = db.transaction(STORE_STATIONS, 'readwrite');
+    const store = tx.objectStore(STORE_STATIONS);
     store.put(data, 'cached_raw_data');
     store.put(Date.now(), 'last_update_timestamp');
     log("INDEXEDDB", "💾 Base IRVE statique sauvegardée localement.");
   } catch (err) {
-    log("INDEXEDDB", "Erreur de sauvegarde : " + err.message, true);
+    log("INDEXEDDB", "Erreur de sauvegarde stations : " + err.message, true);
   }
 }
 
 async function getCachedStaticData() {
   try {
     const db = await openDB();
-    const tx = db.transaction(STORE_NAME, 'readonly');
-    const store = tx.objectStore(STORE_NAME);
+    const tx = db.transaction(STORE_STATIONS, 'readonly');
+    const store = tx.objectStore(STORE_STATIONS);
     
     const data = await new Promise(r => {
       const req = store.get('cached_raw_data');
@@ -288,7 +361,8 @@ function initMap() {
         }
     });
 
-    log("INIT", "Carte Leaflet initialisée centrée sur la France.");
+    log("INIT", "Carte Leaflet initialisée.");
+    loadOrFetchCommunesDB();
 }
 
 function toggleOpDropdown(e) {
@@ -452,7 +526,7 @@ async function fetchAndFilterStations() {
 
     if (cached) {
         log("INDEXEDDB", "⚡ Base locale trouvée ! Traitement immédiat.");
-        processStaticData(cached.data);
+        await processStaticData(cached.data);
         hasLoadedData = true;
 
         if (!cached.isOutdated || !navigator.onLine) {
@@ -477,13 +551,12 @@ async function fetchAndFilterStations() {
                 complete: async function(results) {
                     log("STATIQUE", `${results.data.length} bornes brutes téléchargées. Sauvegarde locale...`);
                     
-                    /* MODIFICATION 2 : Prise en compte du nom de la commune */
                     const cleanRows = results.data.map(row => ({
                         puissance_nominale: row.puissance_nominale || row.puissance_max_kw,
                         coordonneesXY: row.coordonneesXY || row.xy_coords || row.coordonnees,
                         nom_amenageur: row.nom_amenageur,
                         nom_station: row.nom_station,
-                        nom_commune: row.nom_commune || row.commune || row.ville || "",
+                        code_insee_commune: row.code_insee_commune || row.code_insee || "",
                         id_station_itinerance: row.id_station_itinerance,
                         id_pdc_itinerance: row.id_pdc_itinerance
                     }));
@@ -491,7 +564,7 @@ async function fetchAndFilterStations() {
                     await saveStaticDataToDB(cleanRows);
                     
                     if (!hasLoadedData) {
-                        processStaticData(cleanRows);
+                        await processStaticData(cleanRows);
                     }
                 }
             });
@@ -501,8 +574,9 @@ async function fetchAndFilterStations() {
     }
 }
 
-function processStaticData(rawData) {
+async function processStaticData(rawData) {
     let stationsMap = new Map();
+    let codesInseeSet = new Set();
 
     rawData.forEach(row => {
         let pwr = parseFloat(row.puissance_nominale || 0);
@@ -516,11 +590,16 @@ function processStaticData(rawData) {
         
         let opName = row.nom_amenageur || "IRVE";
         let stId = row.id_station_itinerance || row.nom_station;
+        let codeInsee = row.code_insee_commune || "";
+        
+        if (codeInsee) codesInseeSet.add(codeInsee);
+
         if(!stationsMap.has(stId)) {
             stationsMap.set(stId, {
                 id: stId, 
                 nom: row.nom_station, 
-                commune: row.nom_commune || "Commune inconnue",
+                code_insee: codeInsee,
+                commune: codeInsee ? `INSEE: ${codeInsee}` : "Commune inconnue",
                 op: opName,
                 lat: lat, lng: lon, pwr: pwr, pdcs: []
             });
@@ -528,6 +607,16 @@ function processStaticData(rawData) {
         let st = stationsMap.get(stId);
         if(pwr > st.pwr) st.pwr = pwr;
         st.pdcs.push(row.id_pdc_itinerance);
+    });
+
+    // Récupération locale des noms de commune depuis IndexedDB (Jointure)
+    log("COMMUNES", `Résolution locale des noms de villes pour ${codesInseeSet.size} codes INSEE...`);
+    const communesLookup = await getCommunesMap(codesInseeSet);
+    
+    stationsMap.forEach(st => {
+        if (st.code_insee && communesLookup.has(st.code_insee)) {
+            st.commune = communesLookup.get(st.code_insee);
+        }
     });
 
     log("TRAITEMENT", `${stationsMap.size} stations rapides identifiées. Projection sur le GPX...`);
@@ -673,7 +762,6 @@ function renderList() {
         
         let m = L.circleMarker([s.lat, s.lng], {radius:8, fillColor:color, color:'#fff', weight:1, fillOpacity:0.9}).addTo(map);
         
-        /* MODIFICATION 3 : Coordonnées GPS prêtes à être copiées dans Google Maps */
         const coordsStr = `${s.lat.toFixed(5)}, ${s.lng.toFixed(5)}`;
         m.bindPopup(`<b>${s.op}</b><br>${s.nom}<br><div style="margin-top:4px; font-size:11px; opacity:0.8;">📍 <code>${coordsStr}</code></div>`);
         markers[i] = m;
@@ -681,7 +769,6 @@ function renderList() {
         let pdcsHtml = s.liveInfo.map(p => `<tr><td>${p.id}</td><td><b>${p.etat}</b></td><td>${p.occup}</td><td>${p.h}</td></tr>`).join('');
         if(!pdcsHtml) pdcsHtml = `<tr><td colspan="4">Aucun statut disponible</td></tr>`;
         
-        /* MODIFICATION 1 & 2 : Intégration de la commune et blocage du retour à la ligne */
         html += `
         <div class='station-card' onclick="map.setView([${s.lat}, ${s.lng}], 14); markers[${i}].openPopup();">
           <div class='station-main'>
