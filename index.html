@@ -224,7 +224,6 @@ async function getCommunesMap(codesInseeSet) {
         const tx = db.transaction(STORE_COMMUNES, 'readonly');
         const store = tx.objectStore(STORE_COMMUNES);
 
-        // Transaction unique et requêtes parallèles pour éviter de bloquer l'UI
         await new Promise((resolve) => {
             let pending = codesInseeSet.size;
 
@@ -769,8 +768,18 @@ function renderList() {
         
         let m = L.circleMarker([s.lat, s.lng], {radius:8, fillColor:color, color:'#fff', weight:1, fillOpacity:0.9}).addTo(map);
         
+        // Coordonnées GPS + Lien Google Maps
         const coordsStr = `${s.lat.toFixed(5)}, ${s.lng.toFixed(5)}`;
-        m.bindPopup(`<b>${s.op}</b><br>${s.nom}<br><div style="margin-top:4px; font-size:11px; opacity:0.8;">📍 <code>${coordsStr}</code></div>`);
+        const gmapsUrl = `https://www.google.com/maps/search/?api=1&query=${s.lat},${s.lng}`;
+
+        m.bindPopup(`
+          <b>${s.op}</b><br>${s.nom}<br>
+          <div style="margin-top:6px; font-size:11px;">
+            📍 <a href="${gmapsUrl}" target="_blank" rel="noopener noreferrer" style="color: #0284c7; text-decoration: underline; font-weight: bold;">
+              ${coordsStr} ↗
+            </a>
+          </div>
+        `);
         markers[i] = m;
         
         let pdcsHtml = s.liveInfo.map(p => `<tr><td>${p.id}</td><td><b>${p.etat}</b></td><td>${p.occup}</td><td>${p.h}</td></tr>`).join('');
