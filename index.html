@@ -1,607 +1,508 @@
 <!DOCTYPE html>
-<html>
+<html lang="fr">
 <head>
-    <meta name='viewport' content='width=device-width, initial-scale=1.0, viewport-fit=cover'>
-    <meta charset='utf-8'>
-    <title>IRVE Roadbook Live</title>
-    <link rel="manifest" href="./manifest.json">
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
-    <style>
-      :root { 
-        --bg: #f8fafc; --text: #0f172a; --border: #cbd5e1; --card-bg: #ffffff; --input-bg: #ffffff; --input-border: #94a3b8; --pdc-bg: #f1f5f9; --btn-bg: #e2e8f0; --btn-text: #0f172a; 
-        --op-color: #0284c7; --dispo-ok: #16a34a; --dispo-warn: #d97706; --dispo-alert: #dc2626;
-      }
-      @media (prefers-color-scheme: dark) {
-        :root {
-          --bg: #121212; --text: #e0e0e0; --border: #333333; --card-bg: #18181b; --input-bg: #18181b; --input-border: #3f3f46; --pdc-bg: #09090b; --btn-bg: #1e293b; --btn-text: #ffffff; 
-          --op-color: #38bdf8; --dispo-ok: #4ade80; --dispo-warn: #fbbf24; --dispo-alert: #f87171;
-        }
-      }
-      body { font-family: -apple-system, sans-serif; margin: 0; background: var(--bg); color: var(--text); height: 100vh; height: 100dvh; display: flex; flex-direction: column; overflow: hidden; }
-      
-      #map, #terminal-logs { 
-          position: relative; 
-          height: 45vh; 
-          height: 45dvh; 
-          width: 100%; 
-          border-bottom: 2px solid #cbd5e1; 
-          flex-shrink: 0; 
-          box-sizing: border-box;
-      }
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>IRVE Roadbook Live</title>
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#1e293b">
 
-      #terminal-logs { 
-          display: none; 
-          background: rgba(15,23,42,0.98); 
-          color: #4ade80; 
-          font-family: monospace; 
-          font-size: 11px; 
-          overflow-y: auto; 
-          -webkit-overflow-scrolling: touch; 
-          padding: 10px; 
-          padding-bottom: 40px; 
-          z-index: 10; 
-          user-select: text;
-          -webkit-user-select: text;
+  <!-- Leaflet CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+
+  <style>
+    :root {
+      --bg-color: #0f172a;
+      --card-bg: #1e293b;
+      --text-color: #f8fafc;
+      --accent-color: #38bdf8;
+    }
+
+    body {
+      margin: 0;
+      padding: 0;
+      font-family: system-ui, -apple-system, sans-serif;
+      background-color: var(--bg-color);
+      color: var(--text-color);
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    header {
+      background-color: var(--card-bg);
+      padding: 10px 15px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+      z-index: 1000;
+    }
+
+    h1 {
+      font-size: 1.1rem;
+      margin: 0;
+      color: var(--accent-color);
+    }
+
+    .controls {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    input[type="file"], select, button {
+      background-color: #334155;
+      color: var(--text-color);
+      border: 1px solid #475569;
+      padding: 6px 10px;
+      border-radius: 6px;
+      font-size: 0.85rem;
+    }
+
+    button {
+      cursor: pointer;
+      background-color: var(--accent-color);
+      color: #0f172a;
+      font-weight: bold;
+      border: none;
+    }
+
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    #main-container {
+      display: flex;
+      flex: 1;
+      position: relative;
+    }
+
+    #map {
+      flex: 1;
+      height: 100%;
+      width: 100%;
+    }
+
+    #sidebar {
+      width: 320px;
+      background-color: var(--card-bg);
+      border-left: 1px solid #334155;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    #logs {
+      padding: 8px;
+      background-color: #020617;
+      font-family: monospace;
+      font-size: 0.75rem;
+      color: #94a3b8;
+      height: 80px;
+      overflow-y: auto;
+      border-bottom: 1px solid #334155;
+    }
+
+    #station-list {
+      flex: 1;
+      overflow-y: auto;
+      padding: 10px;
+    }
+
+    .station-card {
+      background-color: #334155;
+      padding: 10px;
+      border-radius: 6px;
+      margin-bottom: 8px;
+      font-size: 0.85rem;
+    }
+
+    .station-card h3 {
+      margin: 0 0 4px 0;
+      font-size: 0.95rem;
+      color: var(--accent-color);
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 0.75rem;
+      font-weight: bold;
+      margin-top: 4px;
+    }
+    .badge-power { background-color: #0284c7; color: white; }
+    .badge-free { background-color: #16a34a; color: white; }
+    .badge-busy { background-color: #dc2626; color: white; }
+    .badge-unknown { background-color: #64748b; color: white; }
+
+    @media (max-width: 768px) {
+      #main-container {
+        flex-direction: column;
       }
-
-      /* Style Leaflet natif appliqué au deuxième bloc : même largeur, icônes en noir strict (#000) */
-      .leaflet-control-brouter { background: #fff; border: 2px solid rgba(0,0,0,0.2); background-clip: padding-box; border-radius: 4px; box-shadow: 0 1px 5px rgba(0,0,0,0.4); }
-      .brouter-ctrl-btn { width: 26px; height: 26px; line-height: 26px; display: block; text-align: center; text-decoration: none; color: #000; border-bottom: 1px solid #ccc; cursor: pointer; background-color: #fff; position: relative; }
-      .brouter-ctrl-btn:last-child { border-bottom: none; }
-      .brouter-ctrl-btn:hover { background-color: #f4f4f4; color: #000; }
-      .brouter-ctrl-btn.active-track { background-color: #16a34a !important; color: #fff !important; }
-      .brouter-ctrl-btn svg { width: 14px; height: 14px; vertical-align: middle; fill: currentColor; }
-
-      #main-content { height: 55vh; height: 55dvh; flex: 1; overflow-y: auto; padding: 10px; box-sizing: border-box; }
-      .header-controls { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-bottom: 10px; font-size: 13px; }
-      .refresh-btn { background: var(--btn-bg); color: var(--btn-text); border: 1px solid var(--border); padding: 5px 9px; border-radius: 6px; cursor: pointer; font-weight: 600; display: inline-flex; align-items: center; justify-content: center; font-size: 14px; flex-shrink: 0; }
-      
-      /* Champ km réduit pour tenir sans renvoi à la ligne */
-      .input-field { background: var(--input-bg); color: var(--text); border: 1px solid var(--input-border); padding: 5px; width: 42px; border-radius: 6px; font-weight: bold; text-align: center; font-size: 13px; }
-      
-      /* Dropdown multi-sélection opérateurs */
-      .multi-select-container { position: relative; display: inline-block; font-size: 12px; }
-      .multi-select-header { background: var(--input-bg); color: var(--text); border: 1px solid var(--input-border); padding: 5px 8px; border-radius: 6px; cursor: pointer; font-weight: 500; white-space: nowrap; user-select: none; }
-      .multi-select-dropdown { display: none; position: absolute; top: 100%; left: 0; z-index: 100; background: var(--card-bg); border: 1px solid var(--border); border-radius: 6px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); max-height: 180px; overflow-y: auto; width: 220px; padding: 6px; margin-top: 2px; }
-      .multi-select-dropdown.show { display: block; }
-      .multi-select-item { display: flex; align-items: center; gap: 6px; padding: 3px 0; cursor: pointer; font-size: 11px; }
-
-      .station-card { display: flex; flex-direction: column; border-bottom: 1px solid var(--border); padding: 12px 6px; cursor: pointer; background: var(--card-bg); border-radius: 6px; margin-bottom: 4px;}
-      .station-main { display: flex; align-items: center; width: 100%; }
-      .nav-block { width: 75px; min-width: 75px; border-right: 1px solid var(--border); margin-right: 12px; }
-      .borne-container { display: flex; flex-direction: column; width: 14px; height: 18px; flex-shrink: 0; }
-      .chapeau-rouge { height: 6px; background-color: #ef4444; border-top-left-radius: 6px; border-top-right-radius: 6px; }
-      .base-blanche { flex: 1; background-color: #ffffff; border: 1px solid #9ca3af; border-top: none; display: flex; align-items: center; justify-content: center; font-size: 7px; font-weight: 900; color: #1f2937; }
-      .pk-line { font-size: 16px; font-weight: 800; display: flex; align-items: center; gap: 4px; }
-      .detour-line { font-size: 11px; opacity: 0.7; margin-left: 18px; margin-top: 2px; }
-      .info-block { flex: 1; min-width: 0; }
-      .op-title { font-weight: 800; font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--op-color); }
-      .st-name { font-size: 13px; opacity: 0.9; margin-top: 2px; }
-      
-      .tech-block { width: auto; min-width: 55px; text-align: right; border-left: 1px solid var(--border); padding-left: 8px; flex-shrink: 0; }
-      
-      .dispo-ok { color: var(--dispo-ok); } .dispo-warn { color: var(--dispo-warn); } .dispo-alert { color: var(--dispo-alert); }
-      .pdc-panel { display: none; margin-top: 10px; font-size: 12px; background: var(--pdc-bg); padding: 10px; border-radius: 6px; }
-      .pdc-panel.show { display: block; }
-      .pdc-table { width: 100%; border-collapse: collapse; text-align: left; table-layout: fixed; }
-      .pdc-table td, .pdc-table th { padding: 4px; border-bottom: 1px solid var(--border); font-family: monospace; font-size: 11px; }
-      
-      .pdc-table th:nth-child(1), .pdc-table td:nth-child(1) { width: 28%; word-break: break-all; overflow-wrap: break-word; }
-      .pdc-table th:nth-child(2), .pdc-table td:nth-child(2) { width: 28%; }
-      .pdc-table th:nth-child(3), .pdc-table td:nth-child(3) { width: 22%; }
-      .pdc-table th:nth-child(4), .pdc-table td:nth-child(4) { width: 22%; }
-      
-      .log-err { color: #f87171; }
-      .close-log-btn { position: sticky; top: 0; float: right; background: #ef4444; color: white; border: none; padding: 4px 8px; border-radius: 4px; font-weight: bold; cursor: pointer; z-index: 20; }
-      
-      .user-loc-icon { background: transparent !important; border: none !important; }
-      .user-loc-arrow { width: 28px; height: 28px; transition: transform 0.3s ease-out; filter: drop-shadow(0px 2px 4px rgba(0,0,0,0.4)); }
-    </style>
+      #sidebar {
+        width: 100%;
+        height: 40%;
+      }
+    }
+  </style>
 </head>
 <body>
-  <div id="terminal-logs">
-      <button class="close-log-btn" onclick="toggleLogs()">✕ Fermer</button>
-      <div id="log-content"></div>
-  </div>
 
-  <div id="map"></div>
-  
-  <div id="main-content">
-    <div class="header-controls">
-      <b>km :</b> <input type='number' id='kmInput' class='input-field' value="0" oninput='renderList()' max="9999">
-      
-      <!-- Multi-select Opérateurs compact avec affichage au clic -->
-      <div class="multi-select-container">
-          <div class="multi-select-header" onclick="toggleOpDropdown(event)">Opérateurs (Tous) ▼</div>
-          <div id="opDropdownContent" class="multi-select-dropdown">
-              <div class="multi-select-item" onclick="toggleSelectAllOps(true)"><b>[ Tout sélectionner ]</b></div>
-              <div class="multi-select-item" onclick="toggleSelectAllOps(false)"><b>[ Tout désélectionner ]</b></div>
-              <hr style="border:0; border-top:1px solid var(--border); margin:4px 0;">
-              <div id="opCheckboxesList"></div>
-          </div>
+  <header>
+    <h1>⚡ IRVE Live</h1>
+    <div class="controls">
+      <input type="file" id="gpx-input" accept=".gpx">
+      <select id="operator-filter">
+        <option value="ALL">Tous les opérateurs</option>
+      </select>
+      <button id="refresh-qualicharge-btn" onclick="updateQualichargeLive()">🔄 Live</button>
+    </div>
+  </header>
+
+  <div id="main-container">
+    <div id="map"></div>
+    <div id="sidebar">
+      <div id="logs">Initialisation de l'application...</div>
+      <div id="station-list">
+        <p style="text-align: center; color: #64748b;">Chargez un fichier GPX pour afficher les bornes du trajet.</p>
       </div>
-      
-      <input type="file" id="gpxInput" accept=".gpx" style="display:none;" onchange="handleGPXUpload(event)">
-      <button class="refresh-btn" onclick="document.getElementById('gpxInput').click()" title="Charger GPX">📁</button>
-      <button class="refresh-btn" onclick="toggleLogs()" title="Logs">📝</button>
-      <button class='refresh-btn' onclick="fetchLiveQualicharge()" title="Rafraîchir Live">🔄</button>
-    </div>
-    <div id="stationsContainer">
-        <div style="text-align:center; opacity:0.6; padding: 20px;">Veuillez charger un fichier GPX pour commencer.<br><br>💡 (Bouton 📁)</div>
     </div>
   </div>
 
-<script>
-let map, gpxLine, userMarker, watchId = null, isAutoTrack = false, isSimulating = false, simInterval = null;
-let gpxPoints = [], globalData = [], markers = {};
-let lastValidLat = null, lastValidLng = null;
-const RAYON_RECHERCHE_KM = 3.0, PUISSANCE_MIN_KW = 100.0, KM_MIN_DEPART = 5.0;
+  <!-- Scripts externes -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 
-function log(tag, message, isError=false) {
-    const ts = new Date().toLocaleTimeString('fr-FR');
-    const pref = isError ? "❌ [ERREUR]" : "ℹ️ [INFO]";
-    const line = `[${ts}] ${pref} [${tag}] ${message}`;
-    if (isError) console.error(line); else console.log(line);
-    
-    const term = document.getElementById('terminal-logs');
-    const content = document.getElementById('log-content');
-    if (content) {
-        const div = document.createElement('div');
-        if(isError) div.className = 'log-err';
-        div.innerText = line;
-        content.appendChild(div);
-        term.scrollTop = term.scrollHeight;
-    }
-}
+  <script>
+    // ============================================================================
+    // 1. GESTION DE LA BASE LOCALE INDEXEDDB (MODE HORS-LIGNE)
+    // ============================================================================
+    const DB_NAME = 'IRVEDatabase';
+    const DB_VERSION = 1;
+    const STORE_NAME = 'stations';
+    const MAX_AGE_DAYS = 7;
 
-function toggleLogs() {
-    const t = document.getElementById('terminal-logs');
-    const mapDiv = document.getElementById('map');
-    const isOpen = t.style.display === 'block';
-    
-    if (isOpen) {
-        t.style.display = 'none';
-        mapDiv.style.display = 'block';
-        if(map) map.invalidateSize();
-    } else {
-        mapDiv.style.display = 'none';
-        t.style.display = 'block';
-        t.scrollTop = t.scrollHeight;
-    }
-}
-
-function initMap() {
-    map = L.map('map', {zoomControl: true}).setView([46.5, 2.5], 6);
-    L.tileLayer('https://{s}.tile.openstreetmap.de/tiles/osmde/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
-
-    // Deuxième bloc de boutons (même largeur que zoom natif, icônes en noir, positions 2 et 3 inversées)
-    const CustomActionControls = L.Control.extend({
-        options: { position: 'topleft' },
-        onAdd: function() {
-            let container = L.DomUtil.create('div', 'leaflet-control-zoom leaflet-bar leaflet-control');
-            
-            // 1. Ajustement zoom trace entière
-            let b1 = L.DomUtil.create('a', 'brouter-ctrl-btn', container);
-            b1.innerHTML = '<svg viewBox="0 0 24 24"><path d="M20.5 3l-.16.03L15 5.1 9 3 3.36 4.9c-.21.07-.36.25-.36.48V20.5c0 .28.22.5.5.5l.16-.03L9 18.9l6 2.1 5.64-1.9c.21-.07.36-.25.36-.48V3.5c0-.28-.22-.5-.5-.5zM15 19l-6-2.11V5l6 2.11V19z"/></svg>';
-            b1.title = "Zoomer sur toute la trace";
-            b1.onclick = (e) => { e.stopPropagation(); fitTraceBounds(); };
-
-            // 2. [Inversé] Acquisition ponctuelle GPS (Cible/crosshair)
-            let b2 = L.DomUtil.create('a', 'brouter-ctrl-btn', container);
-            b2.innerHTML = '<svg viewBox="0 0 24 24"><path d="M12 8c-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4-1.79-4-4-4zm8.94 3c-.46-4.17-3.77-7.48-7.94-7.94V1h-2v2.06C6.83 3.52 3.52 6.83 3.06 11H1v2h2.06c.46 4.17 3.77 7.48 7.94 7.94V23h2v-2.06c4.17-.46 7.48-3.77 7.94-7.94H23v-2h-2.06zM12 19c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7z"/></svg>';
-            b2.title = "Acquisition GPS ponctuelle";
-            b2.onclick = (e) => { e.stopPropagation(); getSinglePosition(); };
-
-            // 3. [Inversé] Suivi live navigation (Icône voiture)
-            let b3 = L.DomUtil.create('a', 'brouter-ctrl-btn', container);
-            b3.id = 'autoTrackBtn';
-            b3.innerHTML = '<svg viewBox="0 0 24 24"><path d="M18.92 6.01C18.72 5.42 18.16 5 17.5 5h-11c-.66 0-1.22.42-1.42 1.01L3 12v8c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h12v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-8l-2.08-5.99zM6.85 7h10.29l1.04 3H5.81l1.04-3zM19 17H5v-4.66l.12-.34h13.76l.12.34V17z"/><circle cx="7.5" cy="14.5" r="1.5"/><circle cx="16.5" cy="14.5" r="1.5"/></svg>';
-            b3.title = "Activer/Désactiver suivi live";
-            b3.onclick = (e) => { e.stopPropagation(); toggleAutoTrack(); };
-
-            // 4. Simulation de suivi navigation
-            let b4 = L.DomUtil.create('a', 'brouter-ctrl-btn', container);
-            b4.id = 'simTrackBtn';
-            b4.innerHTML = '<svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>';
-            b4.title = "Simuler le trajet sur la trace";
-            b4.onclick = (e) => { e.stopPropagation(); toggleSimulation(); };
-
-            return container;
-        }
-    });
-    map.addControl(new CustomActionControls());
-
-    document.addEventListener('click', (e) => {
-        const container = document.querySelector('.multi-select-container');
-        if (container && !container.contains(e.target)) {
-            document.getElementById('opDropdownContent').classList.remove('show');
-        }
-    });
-
-    log("INIT", "Carte Leaflet initialisée.");
-}
-
-function toggleOpDropdown(e) {
-    e.stopPropagation();
-    document.getElementById('opDropdownContent').classList.toggle('show');
-}
-
-function fitTraceBounds() {
-    if(gpxLine) {
-        map.fitBounds(gpxLine.getBounds());
-        log("MAP", "Zoom ajusté à la trace GPX.");
-    } else {
-        log("MAP", "Aucune trace GPX chargée.", true);
-    }
-}
-
-function getSinglePosition() {
-    if(!navigator.geolocation) {
-        log("GPS", "Géolocalisation non supportée.", true);
-        return;
-    }
-    log("GPS", "Acquisition d'une position GPS ponctuelle...");
-    navigator.geolocation.getCurrentPosition(
-        pos => {
-            updatePosition(pos.coords.latitude, pos.coords.longitude, pos.coords.heading);
-            log("GPS", "Position ponctuelle acquise avec succès.");
-        },
-        err => log("GPS", "Erreur acquisition : " + err.message, true),
-        { enableHighAccuracy: true, timeout: 10000 }
-    );
-}
-
-function toggleAutoTrack() {
-    if(isSimulating) toggleSimulation();
-    isAutoTrack = !isAutoTrack;
-    const btn = document.getElementById('autoTrackBtn');
-    if (isAutoTrack) {
-        btn.classList.add('active-track');
-        if(navigator.geolocation) {
-            watchId = navigator.geolocation.watchPosition(
-                pos => updatePosition(pos.coords.latitude, pos.coords.longitude, pos.coords.heading),
-                err => log("GPS", "Erreur : " + err.message, true),
-                { enableHighAccuracy: true, maximumAge: 3000 }
-            );
-            log("GPS", "Suivi live activé.");
-        }
-    } else {
-        btn.classList.remove('active-track');
-        if(watchId) navigator.geolocation.clearWatch(watchId);
-        lastValidLat = null; lastValidLng = null;
-        log("GPS", "Suivi live désactivé.");
-    }
-}
-
-function toggleSimulation() {
-    if(isAutoTrack) toggleAutoTrack();
-    isSimulating = !isSimulating;
-    const btn = document.getElementById('simTrackBtn');
-    
-    if(isSimulating) {
-        if(gpxPoints.length === 0) {
-            log("SIM", "Impossible de simuler : aucun fichier GPX chargé.", true);
-            isSimulating = false;
-            return;
-        }
-        btn.classList.add('active-track');
-        log("SIM", "Démarrage de la simulation de trajet...");
-        let index = 0;
-        simInterval = setInterval(() => {
-            if(index >= gpxPoints.length) {
-                toggleSimulation();
-                log("SIM", "Simulation terminée (fin du tracé).");
-                return;
-            }
-            let pt = gpxPoints[index];
-            let nextPt = gpxPoints[index + 1] || pt;
-            let heading = Math.atan2(nextPt.lon - pt.lon, nextPt.lat - pt.lat) * (180 / Math.PI);
-            updatePosition(pt.lat, pt.lon, heading);
-            index += Math.max(1, Math.floor(gpxPoints.length / 300));
-        }, 300);
-    } else {
-        btn.classList.remove('active-track');
-        if(simInterval) clearInterval(simInterval);
-        log("SIM", "Simulation arrêtée.");
-    }
-}
-
-function updatePosition(lat, lng, heading) {
-    if (!isSimulating && lastValidLat !== null && lastValidLng !== null) {
-        let distanceMetres = distanceHaversine(lastValidLat, lastValidLng, lat, lng) * 1000;
-        if (distanceMetres < 10) return;
-    }
-    
-    lastValidLat = lat;
-    lastValidLng = lng;
-
-    map.panTo([lat, lng], {animate: true, duration: 0.3});
-    
-    let h = heading || 0;
-    let svg = `<div style="width:32px;height:32px;"><svg class="user-loc-arrow" style="transform: rotate(${h}deg);" viewBox="0 0 24 24"><path fill="#0284c7" stroke="#ffffff" stroke-width="2" d="M12 2L4.5 20.29l.71.71L12 18l6.79 3 .71-.71z"/></svg></div>`;
-    
-    if(userMarker) {
-        userMarker.setLatLng([lat, lng]);
-        let arrow = userMarker.getElement().querySelector('.user-loc-arrow');
-        if(arrow) arrow.style.transform = `rotate(${h}deg)`;
-    } else {
-        userMarker = L.marker([lat, lng], {icon: L.divIcon({html: svg, iconSize:[32,32], iconAnchor:[16,16], className: 'user-loc-icon'})}).addTo(map);
+    function log(msg) {
+      const logDiv = document.getElementById('logs');
+      logDiv.innerHTML += `<div>[${new Date().toLocaleTimeString()}] ${msg}</div>`;
+      logDiv.scrollTop = logDiv.scrollHeight;
     }
 
-    if(gpxPoints.length > 0) {
-        let minDist = Infinity, bestKm = 0;
-        for(let pt of gpxPoints) {
-            let d = distanceHaversine(lat, lng, pt.lat, pt.lon);
-            if(d < minDist) { minDist = d; bestKm = pt.km; }
-        }
-        document.getElementById('kmInput').value = Math.round(bestKm);
-        renderList();
+    function openDB() {
+      return new Promise((resolve, reject) => {
+        const request = indexedDB.open(DB_NAME, DB_VERSION);
+        request.onupgradeneeded = (e) => {
+          const db = e.target.result;
+          if (!db.objectStoreNames.contains(STORE_NAME)) {
+            db.createObjectStore(STORE_NAME);
+          }
+        };
+        request.onsuccess = (e) => resolve(e.target.result);
+        request.onerror = (e) => reject(e.target.error);
+      });
     }
-}
 
-function distanceHaversine(lat1, lon1, lat2, lon2) {
-    const R = 6371.0, dLat = (lat2-lat1)*Math.PI/180, dLon = (lon2-lon1)*Math.PI/180;
-    const a = Math.sin(dLat/2)*Math.sin(dLat/2) + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLon/2)*Math.sin(dLon/2);
-    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-}
+    async function saveStationsToDB(stations) {
+      try {
+        const db = await openDB();
+        const tx = db.transaction(STORE_NAME, 'readwrite');
+        const store = tx.objectStore(STORE_NAME);
+        store.put(stations, 'cached_stations');
+        store.put(Date.now(), 'last_update_timestamp');
+        log("💾 Base IRVE locale sauvegardée (IndexedDB).");
+      } catch (err) {
+        log("⚠️ Erreur sauvegarde IndexedDB: " + err.message);
+      }
+    }
 
-function handleGPXUpload(event) {
-    const file = event.target.files[0];
-    if(!file) return;
-    log("GPX", `Fichier '${file.name}' sélectionné. Lecture en cours...`);
-    const reader = new FileReader();
-    reader.onload = (e) => {
-        const parser = new DOMParser();
-        const xml = parser.parseFromString(e.target.result, "text/xml");
-        const trkpts = xml.getElementsByTagName("trkpt");
-        gpxPoints = [];
-        let km = 0, prev = null;
-        for(let i=0; i<trkpts.length; i++) {
-            let lat = parseFloat(trkpts[i].getAttribute("lat"));
-            let lon = parseFloat(trkpts[i].getAttribute("lon"));
-            if(prev) km += distanceHaversine(prev.lat, prev.lon, lat, lon);
-            gpxPoints.push({lat, lon, km});
-            prev = {lat, lon};
-        }
-        log("GPX", `${gpxPoints.length} points extraits. Distance totale : ${km.toFixed(1)} km.`);
+    async function getCachedStations() {
+      try {
+        const db = await openDB();
+        const tx = db.transaction(STORE_NAME, 'readonly');
+        const store = tx.objectStore(STORE_NAME);
         
-        if(gpxLine) map.removeLayer(gpxLine);
-        gpxLine = L.polyline(gpxPoints.map(p => [p.lat, p.lon]), {color: '#0284c7', weight: 4}).addTo(map);
-        map.fitBounds(gpxLine.getBounds());
+        const stations = await new Promise(r => {
+          const req = store.get('cached_stations');
+          req.onsuccess = () => r(req.result);
+        });
         
-        toggleLogs(); 
-        fetchAndFilterStations();
-    };
-    reader.readAsText(file);
-}
+        const timestamp = await new Promise(r => {
+          const req = store.get('last_update_timestamp');
+          req.onsuccess = () => r(req.result);
+        });
 
-function fetchAndFilterStations() {
-    log("ÉTAPE 1", "Recherche du fichier IRVE statique sur data.gouv.fr...");
-    fetch("https://www.data.gouv.fr/api/1/datasets/infrastructures-de-recharge-pour-vehicules-electriques-donnees-ouvertes/")
-    .then(res => res.json())
-    .then(data => {
-        const url = data.resources.find(r => r.title.toLowerCase().includes('statique')).latest;
-        log("STATIQUE", `Fichier trouvé. Téléchargement et analyse CSV en cours...`);
-        
-        Papa.parse(url, {
-            download: true,
+        if (!stations || !timestamp) return null;
+
+        const ageInDays = (Date.now() - timestamp) / (1000 * 60 * 60 * 24);
+        return { stations, isOutdated: ageInDays > MAX_AGE_DAYS };
+      } catch (err) {
+        log("⚠️ Erreur lecture IndexedDB: " + err.message);
+        return null;
+      }
+    }
+
+    // ============================================================================
+    // 2. INITIALISATION ET CARTE LEAFLET
+    // ============================================================================
+    let map = L.map('map').setView([46.603354, 1.888334], 6); // Centre France
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution: '© OpenStreetMap'
+    }).addTo(map);
+
+    let currentGPXPoints = [];
+    let displayedStations = [];
+    let markersGroup = L.layerGroup().addTo(map);
+
+    // Formule d'Haversine pour le calcul de distance
+    function getHaversineDistance(lat1, lon1, lat2, lon2) {
+      const R = 6371; // Rayon de la Terre en km
+      const dLat = (lat2 - lat1) * Math.PI / 180;
+      const dLon = (lon2 - lon1) * Math.PI / 180;
+      const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
+                Math.sin(dLon/2) * Math.sin(dLon/2);
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+      return R * c;
+    }
+
+    // Enregistrement du Service Worker
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('sw.js')
+        .then(() => log("Service Worker actif."))
+        .catch(err => log("SW erreur: " + err));
+    }
+
+    // ============================================================================
+    // 3. CHARGEMENT HORS-LIGNE & RESEAU DES BORNES IRVE (9 CHAMPS CONSOLIDES)
+    // ============================================================================
+    async function loadIRVEStationsAndProcess(gpxData) {
+      log("Recherche des bornes en local...");
+      const cachedData = await getCachedStations();
+      let stationsToUse = null;
+
+      if (cachedData) {
+        log("⚡ Base locale trouvée ! Utilisation immédiate.");
+        stationsToUse = cachedData.stations;
+        processStationsWithGPX(stationsToUse, gpxData);
+
+        if (!cachedData.isOutdated || !navigator.onLine) {
+          if (!navigator.onLine) log("🌐 Mode Hors-ligne actif.");
+          return;
+        }
+        log("🔄 Base locale > 7 jours. Mise à jour en arrière-plan...");
+      }
+
+      // Téléchargement depuis le fichier consolidé data.gouv.fr si en ligne
+      if (navigator.onLine) {
+        try {
+          log("📥 Téléchargement IRVE réseau...");
+          const response = await fetch('https://www.data.gouv.fr/fr/datasets/r/eb9471a7-5b6d-4bc0-94e8-4b28b4468e42');
+          const csvText = await response.text();
+
+          Papa.parse(csvText, {
             header: true,
             skipEmptyLines: true,
-            complete: function(results) {
-                log("STATIQUE", `${results.data.length} bornes brutes téléchargées. Filtrage...`);
-                processStaticData(results.data);
+            complete: async function(results) {
+              // Extraction stricte des 9 champs officiels consolidés
+              const cleanedStations = results.data.map(row => ({
+                idStation: row.id_station,
+                idPdc: row.id_pdc,
+                name: row.nom_station,
+                operator: row.nom_operateur,
+                power: parseFloat(row.puissance_nominale) || 0,
+                lat: parseFloat(row.consolidated_latitude),   // 1 seul 't' dans l'entête CSV
+                lng: parseFloat(row.consolidated_longitude),
+                zipCode: row.consolidated_code_postal,
+                city: row.consolidated_commune
+              })).filter(s => !isNaN(s.lat) && !isNaN(s.lng));
+
+              await saveStationsToDB(cleanedStations);
+
+              if (!stationsToUse) {
+                processStationsWithGPX(cleanedStations, gpxData);
+              }
             }
-        });
-    }).catch(e => log("ÉTAPE 1", "Erreur réseau: " + e.message, true));
-}
-
-function processStaticData(rawData) {
-    let stationsMap = new Map();
-
-    rawData.forEach(row => {
-        let pwr = parseFloat(row.puissance_nominale || row.puissance_max_kw || 0);
-        if (pwr < PUISSANCE_MIN_KW) return;
-        
-        let coordsStr = row.coordonneesXY || row.xy_coords || row.coordonnees;
-        if(!coordsStr) return;
-        let c = coordsStr.replace('[','').replace(']','').split(',');
-        let lon = parseFloat(c[0]), lat = parseFloat(c[1]);
-        if(isNaN(lat) || isNaN(lon)) return;
-        
-        let opName = row.nom_amenageur || "IRVE";
-        let stId = row.id_station_itinerance || row.nom_station;
-        if(!stationsMap.has(stId)) {
-            stationsMap.set(stId, {
-                id: stId, nom: row.nom_station, op: opName,
-                lat: lat, lng: lon, pwr: pwr, pdcs: []
-            });
+          });
+        } catch (error) {
+          log("⚠️ Échec de mise à jour réseau IRVE.");
         }
-        let st = stationsMap.get(stId);
-        if(pwr > st.pwr) st.pwr = pwr;
-        st.pdcs.push(row.id_pdc_itinerance);
-    });
-
-    log("TRAITEMENT", `${stationsMap.size} stations rapides identifiées. Projection sur le GPX...`);
-    
-    let sampled = gpxPoints.filter((_, i) => i % 3 === 0);
-    globalData = [];
-    let activeOperators = new Set();
-    
-    stationsMap.forEach(st => {
-        let minDist = Infinity, bestKm = 0;
-        for(let pt of sampled) {
-            let d = distanceHaversine(st.lat, st.lng, pt.lat, pt.lon);
-            if(d < minDist) { minDist = d; bestKm = pt.km; }
-        }
-        
-        if (minDist <= RAYON_RECHERCHE_KM && bestKm >= KM_MIN_DEPART) {
-            globalData.push({
-                ...st, km: bestKm, detour: minDist,
-                dispo: st.pdcs.length, total: st.pdcs.length, liveInfo: []
-            });
-            activeOperators.add(st.op);
-        }
-    });
-    
-    globalData.sort((a,b) => a.km - b.km);
-
-    let opListContainer = document.getElementById('opCheckboxesList');
-    opListContainer.innerHTML = "";
-    Array.from(activeOperators).sort().forEach(op => {
-        let div = document.createElement('div');
-        div.className = 'multi-select-item';
-        div.innerHTML = `<input type="checkbox" value="${op}" checked onchange="onOpCheckboxChange()"> <span>${op}</span>`;
-        opListContainer.appendChild(div);
-    });
-    updateOpHeaderLabel();
-
-    log("PROJECTION", `${globalData.length} stations retenues le long du tracé.`);
-    renderList();
-    fetchLiveQualicharge();
-}
-
-function toggleSelectAllOps(status) {
-    const checkboxes = document.querySelectorAll('#opCheckboxesList input[type="checkbox"]');
-    checkboxes.forEach(cb => cb.checked = status);
-    onOpCheckboxChange();
-}
-
-function onOpCheckboxChange() {
-    updateOpHeaderLabel();
-    renderList();
-}
-
-function updateOpHeaderLabel() {
-    const checkboxes = document.querySelectorAll('#opCheckboxesList input[type="checkbox"]');
-    const checkedCount = Array.from(checkboxes).filter(cb => cb.checked).length;
-    let label = "Opérateurs (Tous)";
-    if(checkedCount === 0) label = "Opérateurs (Aucun)";
-    else if(checkedCount < checkboxes.length) label = `Opérateurs (${checkedCount}/${checkboxes.length})`;
-    document.querySelector('.multi-select-header').innerText = label + " ▼";
-}
-
-function fetchLiveQualicharge() {
-    if(globalData.length === 0) {
-        log("LIVE", "Aucune station en mémoire pour lancer le live.", true);
-        return;
+      } else if (!stationsToUse) {
+        alert("Vous êtes hors-ligne et aucune base de bornes n'a encore été enregistrée localement.");
+      }
     }
-    log("LIVE", "Recherche du fichier dynamique Qualicharge sur data.gouv.fr...");
-    
-    fetch("https://www.data.gouv.fr/api/1/datasets/infrastructures-de-recharge-pour-vehicules-electriques-donnees-ouvertes/")
-    .then(res => res.json())
-    .then(data => {
-        const resource = data.resources.find(r => 
-            r.title.toLowerCase().includes('dynamique') || 
-            r.title.toLowerCase().includes('disponibilité') ||
-            r.description?.toLowerCase().includes('dynamique')
-        );
-        
-        const liveUrl = resource ? resource.latest : "https://www.data.gouv.fr/fr/datasets/r/411443b1-6667-473f-8217-1c57c167408f";
-        log("LIVE", `URL dynamique trouvée. Téléchargement CSV en cours...`);
-        
-        Papa.parse(liveUrl, {
-            download: true, header: true, skipEmptyLines: true,
-            complete: function(res) {
-                log("LIVE", `Flux Qualicharge chargé (${res.data.length} lignes). Analyse...`);
-                let dict = {};
-                res.data.forEach(r => { if(r.id_pdc_itinerance) dict[r.id_pdc_itinerance] = r; });
-                
-                globalData.forEach(st => {
-                    let countOk = 0;
-                    st.liveInfo = [];
-                    st.pdcs.forEach(pdcId => {
-                        let info = dict[pdcId] || { etat_pdc: "INCONNU", occupation_pdc: "INCONNU", horodatage: "N/A" };
-                        
-                        let etatClean = (info.etat_pdc || "").trim().toLowerCase();
-                        let occupClean = (info.occupation_pdc || "").trim().toLowerCase();
-                        
-                        let estEnService = ["en_service", "active", "available", "disponible"].includes(etatClean);
-                        etatClean = estEnService ? "en_service" : info.etat_pdc;
 
-                        let estLibre = ["libre", "free", "false", "0", "available"].includes(occupClean);
-                        occupClean = estLibre ? "libre" : info.occupation_pdc;
+    // ============================================================================
+    // 4. TRAITEMENT DU TRAJET GPX & FILTRAGE SPATIAL (< 3 KM)
+    // ============================================================================
+    document.getElementById('gpx-input').addEventListener('change', function(e) {
+      const file = e.target.files[0];
+      if (!file) return;
 
-                        if (estEnService && estLibre) {
-                            countOk++;
-                        }
-                        st.liveInfo.push({id: pdcId, etat: etatClean, occup: occupClean, h: (info.horodatage || "").substring(0,16).replace('T',' ')});
-                    });
-                    st.dispo = countOk;
-                });
-                log("LIVE", "Disponibilités mises à jour avec succès !");
-                renderList();
-            },
-            error: function(err) { log("LIVE", "Erreur chargement flux live: " + err.message, true); }
+      const reader = new FileReader();
+      reader.onload = function(event) {
+        const parser = new DOMParser();
+        const xmlDoc = parser.parseFromString(event.target.result, "text/xml");
+        const trkpts = xmlDoc.querySelectorAll('trkpt');
+
+        currentGPXPoints = [];
+        const latLngs = [];
+
+        trkpts.forEach(pt => {
+          const lat = parseFloat(pt.getAttribute('lat'));
+          const lng = parseFloat(pt.getAttribute('lon'));
+          currentGPXPoints.push({ lat, lng });
+          latLngs.push([lat, lng]);
         });
-    })
-    .catch(e => log("LIVE", "Erreur réseau API live: " + e.message, true));
-}
 
-function renderList() {
-    const kmFilter = parseFloat(document.getElementById('kmInput').value) || 0;
-    
-    let selectedOps = new Set();
-    document.querySelectorAll('#opCheckboxesList input[type="checkbox"]').forEach(cb => {
-        if(cb.checked) selectedOps.add(cb.value);
+        // Afficher le tracé GPX sur la carte
+        markersGroup.clearLayers();
+        const polyline = L.polyline(latLngs, { color: '#38bdf8', weight: 4 }).addTo(markersGroup);
+        map.fitBounds(polyline.getBounds());
+
+        log(`GPX chargé: ${currentGPXPoints.length} points.`);
+        loadIRVEStationsAndProcess(currentGPXPoints);
+      };
+      reader.readAsText(file);
     });
 
-    for(let k in markers) map.removeLayer(markers[k]);
-    markers = {};
-    
-    let html = "";
-    globalData.forEach((s, i) => {
-        if (s.km < kmFilter) return;
-        if (selectedOps.size > 0 && !selectedOps.has(s.op)) return;
-        
-        let status = s.dispo === 0 ? 'dispo-alert' : (s.dispo <= s.total/3 ? 'dispo-warn' : 'dispo-ok');
-        let color = s.dispo === 0 ? '#dc2626' : (s.dispo <= s.total/3 ? '#d97706' : '#16a34a');
-        
-        let m = L.circleMarker([s.lat, s.lng], {radius:8, fillColor:color, color:'#fff', weight:1, fillOpacity:0.9}).addTo(map);
-        m.bindPopup(`<b>${s.op}</b><br>${s.nom}`);
-        markers[i] = m;
-        
-        let pdcsHtml = s.liveInfo.map(p => `<tr><td>${p.id}</td><td><b>${p.etat}</b></td><td>${p.occup}</td><td>${p.h}</td></tr>`).join('');
-        if(!pdcsHtml) pdcsHtml = `<tr><td colspan="4">Aucun statut disponible</td></tr>`;
-        
-        html += `
-        <div class='station-card' onclick="map.setView([${s.lat}, ${s.lng}], 14); markers[${i}].openPopup();">
-          <div class='station-main'>
-            <div class='nav-block'>
-              <div class='pk-line'>
-                <div class='borne-container'><div class='chapeau-rouge'></div><div class='base-blanche'>km</div></div>
-                <span class='pk-val'>${(s.km - kmFilter).toFixed(1)}</span>
-              </div>
-              <div class='detour-line'>↳<i>${s.detour.toFixed(2)}</i></div>
-            </div>
-            <div class='info-block'>
-              <div class='op-title'>${s.op}</div>
-              <div class='st-name'>${s.nom}</div>
-            </div>
-            <div class='tech-block' onclick="event.stopPropagation(); document.getElementById('pdc_${i}').classList.toggle('show')">
-              <div style='font-weight:bold; font-size:12px;'>${s.pwr}kW</div>
-              <div class='${status}' style='font-size:11px; font-weight:bold;'>${s.dispo}/${s.total} PDC</div>
-            </div>
-          </div>
-          <div id='pdc_${i}' class='pdc-panel'>
-            <table class='pdc-table'>
-              <thead><tr><th>PDC</th><th>Etat</th><th>Occupation</th><th>Heure</th></tr></thead>
-              <tbody>${pdcsHtml}</tbody>
-            </table>
-          </div>
-        </div>`;
-    });
-    
-    document.getElementById('stationsContainer').innerHTML = html || "<div style='padding:20px; text-align:center;'>Aucune station trouvée avec ces critères.</div>";
-}
+    function processStationsWithGPX(allStations, gpxPoints) {
+      log("Calcul des bornes proches de l'itinéraire...");
+      
+      // Filtrer les bornes à moins de 3 km du tracé
+      displayedStations = allStations.filter(station => {
+        return gpxPoints.some(pt => getHaversineDistance(pt.lat, pt.lng, station.lat, station.lng) <= 3.0);
+      });
 
-initMap();
-if('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('./sw.js').then(() => log("PWA", "Service Worker installé."));
-  });
-}
-</script>
+      log(`${displayedStations.length} bornes identifiées sur le trajet.`);
+      populateOperatorFilter(displayedStations);
+      renderStationsAndMarkers(displayedStations);
+
+      // Si du réseau est présent, tenter la mise à jour Qualicharge Live
+      if (navigator.onLine) {
+        updateQualichargeLive();
+      }
+    }
+
+    // ============================================================================
+    // 5. AFFICHAGE DES MARQUEURS ET DE LA LISTE
+    // ============================================================================
+    function populateOperatorFilter(stations) {
+      const select = document.getElementById('operator-filter');
+      select.innerHTML = '<option value="ALL">Tous les opérateurs</option>';
+      
+      const operators = [...new Set(stations.map(s => s.operator).filter(Boolean))].sort();
+      operators.forEach(op => {
+        const opt = document.createElement('option');
+        opt.value = op;
+        opt.textContent = op;
+        select.appendChild(opt);
+      });
+    }
+
+    document.getElementById('operator-filter').addEventListener('change', function() {
+      const selected = this.value;
+      const filtered = selected === 'ALL' 
+        ? displayedStations 
+        : displayedStations.filter(s => s.operator === selected);
+      renderStationsAndMarkers(filtered);
+    });
+
+    function renderStationsAndMarkers(stations) {
+      // Nettoyer les anciens marqueurs de bornes (garder la polyline GPX)
+      markersGroup.eachLayer(layer => {
+        if (layer instanceof L.Marker) markersGroup.removeLayer(layer);
+      });
+
+      const listContainer = document.getElementById('station-list');
+      listContainer.innerHTML = '';
+
+      stations.forEach(s => {
+        // 1. Marqueur Carte
+        const marker = L.marker([s.lat, s.lng]).addTo(markersGroup);
+        const statusBadge = s.status ? `<span class="badge badge-${getStatusColor(s.status)}">${s.status}</span>` : '';
+
+        marker.bindPopup(`
+          <b>${s.name || 'Station IRVE'}</b><br>
+          <i>${s.operator || 'Opérateur inconnu'}</i><br>
+          Ville : ${s.city || ''} (${s.zipCode || ''})<br>
+          Puissance : <b>${s.power} kW</b><br>
+          ID PDC : <code>${s.idPdc || s.idStation}</code><br>
+          ${statusBadge}
+        `);
+
+        // 2. Carte dans la Sidebar
+        const card = document.createElement('div');
+        card.className = 'station-card';
+        card.innerHTML = `
+          <h3>${s.name || 'Station IRVE'}</h3>
+          <div>Opérateur : <b>${s.operator || 'N/C'}</b></div>
+          <div>Ville : ${s.city || ''} (${s.zipCode || ''})</div>
+          <span class="badge badge-power">${s.power} kW</span>
+          ${statusBadge}
+        `;
+        card.addEventListener('click', () => {
+          map.setView([s.lat, s.lng], 15);
+          marker.openPopup();
+        });
+        listContainer.appendChild(card);
+      });
+    }
+
+    function getStatusColor(status) {
+      if (!status) return 'unknown';
+      const st = status.toLowerCase();
+      if (st.includes('available') || st.includes('libre')) return 'free';
+      if (st.includes('occupied') || st.includes('occupé')) return 'busy';
+      return 'unknown';
+    }
+
+    // ============================================================================
+    // 6. DISPONIBILITE TEMPS REEL QUALICHARGE
+    // ============================================================================
+    async function updateQualichargeLive() {
+      if (!navigator.onLine) {
+        log("🌐 Hors-ligne : Qualicharge Live indisponible.");
+        return;
+      }
+
+      log("🔄 Récupération des statuts Qualicharge...");
+      try {
+        const res = await fetch('https://www.data.gouv.fr/fr/datasets/r/77983610-867f-4cc5-9c5e-8566a0d4c987');
+        const qualichargeText = await res.text();
+
+        Papa.parse(qualichargeText, {
+          header: true,
+          skipEmptyLines: true,
+          complete: function(results) {
+            let updatedCount = 0;
+            results.data.forEach(q => {
+              // Match par idPdc ou idStation avec nos stations
+              const target = displayedStations.find(s => s.idPdc === q.id_pdc || s.idStation === q.id_station);
+              if (target) {
+                target.status = q.etat;
+                updatedCount++;
+              }
+            });
+
+            log(`✅ Live mis à jour (${updatedCount} PDC mis à jour).`);
+            const selectedOp = document.getElementById('operator-filter').value;
+            const filtered = selectedOp === 'ALL' 
+              ? displayedStations 
+              : displayedStations.filter(s => s.operator === selectedOp);
+            renderStationsAndMarkers(filtered);
+          }
+        });
+      } catch (err) {
+        log("⚠️ Erreur maj Qualicharge: " + err.message);
+      }
+    }
+  </script>
 </body>
 </html>
