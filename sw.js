@@ -10,7 +10,11 @@ const ASSETS = [
   'https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js'
 ];
 
+// Limites géographiques de la France métropolitaine
 const FRANCE_BOUNDS = { minLat: 41.3, maxLat: 51.1, minLng: -5.2, maxLng: 9.6 };
+
+// Utilitaire pour créer une pause entre les requêtes
+const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 function tileToLatLon(x, y, z) {
   const n = Math.pow(2, z);
@@ -35,6 +39,9 @@ function getParentTileUrl(baseUrl, x, y, z, targetZ = 10) {
   return baseUrl.replace(new RegExp(`/${z}/${x}/${y}\\.png`), `/${targetZ}/${parentX}/${parentY}.png`);
 }
 
+// ----------------------------------------------------------------------------
+// INSTALLATION & ACTIVATION DU SERVICE WORKER
+// ----------------------------------------------------------------------------
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(ASSETS)));
   self.skipWaiting();
@@ -51,53 +58,73 @@ self.addEventListener('activate', (e) => {
   self.clients.claim();
 });
 
-// Écoute des messages envoyés depuis l'application (index.html)
+// ----------------------------------------------------------------------------
+// RÉCEPTION DU MESSAGE DE PRÉ-CHARGEMENT (FOND DE CARTE FRANCE ZOOM 4 À 10)
+// ----------------------------------------------------------------------------
 self.addEventListener('message', async (event) => {
   if (event.data && event.data.action === 'PRECACHE_TILES') {
     const urls = event.data.urls;
     const cache = await caches.open(MAP_CACHE_NAME);
     let downloaded = 0;
+    let errors = 0;
     const total = urls.length;
 
-    // Envoi de messages de statut aux pages Web connectées
     const sendLog = (msg, isErr = false) => {
-      self.clients.matchAll().then(clients => {
-        clients.forEach(c => c.postMessage({ type: 'TILE_LOG', message: msg, isError: isErr }));
+      self.clients.matchAll().then((clients) => {
+        clients.forEach((c) => c.postMessage({ type: 'TILE_LOG', message: msg, isError: isErr }));
       });
     };
 
-    sendLog(`📦 Début du téléchargement de ${total} tuiles pour la France...`);
+    sendLog(`📦 Téléchargement progressif d'OSM German (${total} tuiles)...`);
 
-    // Téléchargement par paquets de 15 requêtes simultanées pour ne pas bloquer le réseau
-    const BATCH_SIZE = 15;
-    for (let i = 0; i < urls.length; i += BATCH_SIZE) {
-      const chunk = urls.slice(i, i + BATCH_SIZE);
-      await Promise.all(
-        chunk.map(async (url) => {
-          try {
-            const cached = await cache.match(url);
-            if (!cached) {
-              const resp = await fetch(url);
-              if (resp.status === 200) await cache.put(url, resp);
-            }
-          } catch (err) {
-            // Ignorer silencieusement les échecs ponctuels
-          } finally {
-            downloaded++;
+    for (let i = 0; i < urls.length; i++) {
+      const url = urls[i];
+      
+      try {
+        const cached = await cache.match(url);
+        if (!cached) {
+          let resp = await fetch(url);
+
+          // Si le serveur OSM signale une surcharge (429 Too Many Requests)
+          if (resp.status === 429) {
+            sendLog(`⚠️ Surcharge OSM détectée. Pause de 3 secondes...`, true);
+            await delay(3000);
+            resp = await fetch(url); // Deuxième tentative
           }
-        })
-      );
 
-      // Notification tous les 10% de progression
-      if (downloaded % Math.floor(total / 10) === 0 || downloaded === total) {
+          if (resp.status === 200) {
+            await cache.put(url, resp);
+          } else {
+            errors++;
+          }
+        }
+      } catch (err) {
+        errors++;
+      } finally {
+        downloaded++;
+      }
+
+      // Pause de 80ms entre chaque tuile (~12 tuiles/sec max pour respecter le serveur OSM)
+      await delay(80);
+
+      // Notification dans les logs tous les 5% de progression
+      if (downloaded % Math.floor(total / 20) === 0 || downloaded === total) {
         const pct = Math.round((downloaded / total) * 100);
-        sendLog(`🗺️ Téléchargement carte de France : ${pct}% (${downloaded}/${total})`);
+        sendLog(`🗺️ Carte OSM German : ${pct}% (${downloaded}/${total}) - Échecs : ${errors}`);
       }
     }
-    sendLog(`✅ Téléchargement de la carte de France terminé et stocké en local !`);
+
+    if (errors > 0) {
+      sendLog(`⚠️ Téléchargement terminé : ${downloaded - errors} tuiles enregistrées, ${errors} échecs (seront récupérées au prochain lancement).`);
+    } else {
+      sendLog(`✅ Carte de France OSM German 100% enregistrée en local !`);
+    }
   }
 });
 
+// ----------------------------------------------------------------------------
+// INTERCEPTION DES REQUÊTES HTTP (INTERCEPTOR / FETCH)
+// ----------------------------------------------------------------------------
 self.addEventListener('fetch', (e) => {
   const url = e.request.url;
 
@@ -123,6 +150,7 @@ self.addEventListener('fetch', (e) => {
             }
             return networkResponse;
           } catch (err) {
+            // Fallback hors-ligne : si zoom > 10, tenter d'afficher la tuile parente zoom 10
             if (z > 10) {
               const parentUrl = getParentTileUrl(url, x, y, z, 10);
               const parentCached = await cache.match(parentUrl);
@@ -136,6 +164,7 @@ self.addEventListener('fetch', (e) => {
     }
   }
 
+  // Comportement par défaut pour le reste des fichiers de l'application
   e.respondWith(
     fetch(e.request).catch(() => caches.match(e.request))
   );
