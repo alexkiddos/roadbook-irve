@@ -64,7 +64,7 @@
       .header-controls { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-bottom: 10px; font-size: 13px; }
       .refresh-btn { background: var(--btn-bg); color: var(--btn-text); border: 1px solid var(--border); padding: 5px 9px; border-radius: 6px; cursor: pointer; font-weight: 600; display: inline-flex; align-items: center; justify-content: center; font-size: 14px; flex-shrink: 0; }
       
-      .input-field { background: var(--input-bg); color: var(--text); border: 1px solid var(--input-border); padding: 5px; width: 42px; border-radius: 6px; font-weight: bold; text-align: center; font-size: 13px; }
+      .input-field { background: var(--input-bg); color: var(--text); border: 1px solid var(--input-border); padding: 5px; width: 54px; border-radius: 6px; font-weight: bold; text-align: center; font-size: 13px; }
       
       .multi-select-container { position: relative; display: inline-block; font-size: 12px; }
       .multi-select-header { background: var(--input-bg); color: var(--text); border: 1px solid var(--input-border); padding: 5px 8px; border-radius: 6px; cursor: pointer; font-weight: 500; white-space: nowrap; user-select: none; }
@@ -72,7 +72,15 @@
       .multi-select-dropdown.show { display: block; }
       .multi-select-item { display: flex; align-items: center; gap: 6px; padding: 3px 0; cursor: pointer; font-size: 11px; }
 
-      .station-card { display: flex; flex-direction: column; border-bottom: 1px solid var(--border); padding: 12px 6px; cursor: pointer; background: var(--card-bg); border-radius: 6px; margin-bottom: 4px;}
+      /* GESTION DU MASQUAGE/AFFICHAGE DES VUES */
+      .view-panel { display: none; }
+      .view-panel.active { display: block; }
+
+      /* CARTES STATIONS & ROADBOOK */
+      .station-card, .instruction-card { display: flex; flex-direction: column; border-bottom: 1px solid var(--border); padding: 12px 6px; cursor: pointer; background: var(--card-bg); border-radius: 6px; margin-bottom: 4px;}
+      .instruction-card { flex-direction: row; align-items: center; gap: 10px; }
+      .station-card:hover, .instruction-card:hover { border-color: var(--op-color); }
+      
       .station-main { display: flex; align-items: center; width: 100%; }
       .nav-block { width: 75px; min-width: 75px; border-right: 1px solid var(--border); margin-right: 12px; }
       .borne-container { display: flex; flex-direction: column; width: 14px; height: 18px; flex-shrink: 0; }
@@ -103,6 +111,8 @@
       
       .user-loc-icon { background: transparent !important; border: none !important; }
       .user-loc-arrow { width: 28px; height: 28px; transition: transform 0.3s ease-out; filter: drop-shadow(0px 2px 4px rgba(0,0,0,0.4)); }
+
+      .roadbook-icon { font-size: 22px; width: 32px; text-align: center; flex-shrink: 0; }
     </style>
 </head>
 <body>
@@ -115,9 +125,14 @@
   
   <div id="main-content">
     <div class="header-controls">
-      <b>km :</b> <input type='number' id='kmInput' class='input-field' value="0" oninput='renderList()' max="9999">
+      <!-- CHAMP KM AVEC STEP A 0.1 -->
+      <b>km :</b> 
+      <input type='number' id='kmInput' class='input-field' value="0.0" step="0.1" oninput='updateCurrentView()' max="9999">
       
-      <div class="multi-select-container">
+      <!-- BOUTON ICÔNE POUR BASCULER DU MODE STATIONS AU ROADBOOK -->
+      <button class="refresh-btn" id="modeToggleBtn" onclick="toggleViewMode()" title="Basculer vers le Roadbook">🔌</button>
+
+      <div class="multi-select-container" id="opSelectContainer">
           <div class="multi-select-header" onclick="toggleOpDropdown(event)">Opérateurs (Tous) ▼</div>
           <div id="opDropdownContent" class="multi-select-dropdown">
               <div class="multi-select-item" onclick="toggleSelectAllOps(true)"><b>[ Tout sélectionner ]</b></div>
@@ -132,18 +147,63 @@
       <button class="refresh-btn" onclick="toggleLogs()" title="Logs">📝</button>
       <button class='refresh-btn' onclick="fetchLiveQualicharge()" title="Rafraîchir Live">🔄</button>
     </div>
-    <div id="stationsContainer">
+
+    <!-- VUE STATIONS IRVE -->
+    <div id="stationsContainer" class="view-panel active">
         <div style="text-align:center; opacity:0.6; padding: 20px;">Veuillez charger un fichier GPX pour commencer.<br><br>💡 (Bouton 📁)</div>
+    </div>
+
+    <!-- VUE ROADBOOK / INSTRUCTIONS -->
+    <div id="roadbookContainer" class="view-panel">
+        <div style="text-align:center; opacity:0.6; padding: 20px;">Les instructions BRouter s'afficheront ici après le chargement du GPX.</div>
     </div>
   </div>
 
 <script>
 let map, gpxLine, userMarker, watchId = null, isAutoTrack = false, isSimulating = false, simInterval = null;
-let gpxPoints = [], globalData = [], markers = {};
+let gpxPoints = [], globalData = [], instructionsData = [], markers = {};
 let lastValidLat = null, lastValidLng = null;
 let wakeLock = null;
-let isInitialGPXLoad = false; // Drapeau pour identifier le chargement d'un GPX
+let isInitialGPXLoad = false;
+let currentMode = 'stations'; // 'stations' ou 'roadbook'
+
 const RAYON_RECHERCHE_KM = 3.0, PUISSANCE_MIN_KW = 100.0, KM_MIN_DEPART = 5.0;
+
+// ============================================================================
+// GESTION DU MODE D'AFFICHAGE (IRVE ⇄ ROADBOOK)
+// ============================================================================
+function toggleViewMode() {
+    currentMode = (currentMode === 'stations') ? 'roadbook' : 'stations';
+    
+    const btn = document.getElementById('modeToggleBtn');
+    const opSelect = document.getElementById('opSelectContainer');
+    const stationsDiv = document.getElementById('stationsContainer');
+    const roadbookDiv = document.getElementById('roadbookContainer');
+    
+    if (currentMode === 'stations') {
+        btn.innerHTML = "🔌";
+        btn.title = "Basculer vers le Roadbook (Instructions)";
+        if(opSelect) opSelect.style.display = "inline-block";
+        stationsDiv.classList.add('active');
+        roadbookDiv.classList.remove('active');
+    } else {
+        btn.innerHTML = "🧭";
+        btn.title = "Basculer vers les Stations IRVE";
+        if(opSelect) opSelect.style.display = "none";
+        stationsDiv.classList.remove('active');
+        roadbookDiv.classList.add('active');
+    }
+    
+    updateCurrentView();
+}
+
+function updateCurrentView() {
+    if (currentMode === 'stations') {
+        renderList();
+    } else {
+        renderRoadbook();
+    }
+}
 
 // ============================================================================
 // GESTION DE LA MISE EN VEILLE DE L'ÉCRAN (WAKE LOCK API)
@@ -522,8 +582,8 @@ function updatePosition(lat, lng, heading) {
             let d = distanceHaversine(lat, lng, pt.lat, pt.lon);
             if(d < minDist) { minDist = d; bestKm = pt.km; }
         }
-        document.getElementById('kmInput').value = Math.round(bestKm);
-        renderList();
+        document.getElementById('kmInput').value = parseFloat(bestKm).toFixed(1);
+        updateCurrentView();
     }
 }
 
@@ -537,12 +597,14 @@ function handleGPXUpload(event) {
     const file = event.target.files[0];
     if(!file) return;
     
-    isInitialGPXLoad = true; // Activer le drapeau de chargement GPX
+    isInitialGPXLoad = true;
     log("GPX", `Fichier '${file.name}' sélectionné. Lecture en cours...`);
     const reader = new FileReader();
     reader.onload = (e) => {
         const parser = new DOMParser();
         const xml = parser.parseFromString(e.target.result, "text/xml");
+        
+        // 1. Extraire la trace (<trkpt>)
         const trkpts = xml.getElementsByTagName("trkpt");
         gpxPoints = [];
         let km = 0, prev = null;
@@ -555,6 +617,25 @@ function handleGPXUpload(event) {
         }
         log("GPX", `${gpxPoints.length} points extraits. Distance totale : ${km.toFixed(1)} km.`);
         
+        // 2. Extraire les waypoints / instructions BROUTER (<wpt>)
+        const wpts = xml.getElementsByTagName("wpt");
+        instructionsData = [];
+        for(let i = 0; i < wpts.length; i++) {
+            let lat = parseFloat(wpts[i].getAttribute("lat"));
+            let lon = parseFloat(wpts[i].getAttribute("lon"));
+            let name = wpts[i].getElementsByTagName("name")[0]?.textContent || "Instruction";
+            let desc = wpts[i].getElementsByTagName("desc")[0]?.textContent || "";
+            
+            let minDist = Infinity, wptKm = 0;
+            for(let pt of gpxPoints) {
+                let d = distanceHaversine(lat, lon, pt.lat, pt.lon);
+                if(d < minDist) { minDist = d; wptKm = pt.km; }
+            }
+            instructionsData.push({ lat, lon, name, desc, km: wptKm });
+        }
+        instructionsData.sort((a,b) => a.km - b.km);
+        log("GPX", `${instructionsData.length} instructions Roadbook extraites.`);
+
         if(gpxLine) map.removeLayer(gpxLine);
         gpxLine = L.polyline(gpxPoints.map(p => [p.lat, p.lon]), {color: '#0284c7', weight: 4}).addTo(map);
         map.fitBounds(gpxLine.getBounds());
@@ -699,7 +780,7 @@ async function processStaticData(rawData) {
     updateOpHeaderLabel();
 
     log("PROJECTION", `${globalData.length} stations retenues le long du tracé.`);
-    renderList();
+    updateCurrentView();
     fetchLiveQualicharge();
 }
 
@@ -711,7 +792,7 @@ function toggleSelectAllOps(status) {
 
 function onOpCheckboxChange() {
     updateOpHeaderLabel();
-    renderList();
+    updateCurrentView();
 }
 
 function updateOpHeaderLabel() {
@@ -778,21 +859,61 @@ function fetchLiveQualicharge() {
                     st.dispo = countOk;
                 });
                 log("LIVE", "Disponibilités mises à jour avec succès !");
-                renderList();
+                updateCurrentView();
 
-                // Ferme le terminal UNIQUEMENT si c'est la séquence initiale de chargement du GPX
                 if (isInitialGPXLoad) {
                     const term = document.getElementById('terminal-logs');
                     if (term && term.style.display === 'block') {
                         toggleLogs();
                     }
-                    isInitialGPXLoad = false; // Réinitialisation
+                    isInitialGPXLoad = false;
                 }
             },
             error: function(err) { log("LIVE", "Erreur chargement flux live: " + err.message, true); }
         });
     })
     .catch(e => log("LIVE", "Erreur réseau API live: " + e.message, true));
+}
+
+// ============================================================================
+// FONCTIONS DE RENDU (STATIONS & ROADBOOK)
+// ============================================================================
+function getDirectionIcon(name, desc) {
+    const text = (name + " " + desc).toLowerCase();
+    if (text.includes("left") || text.includes("gauche")) return "⬅️";
+    if (text.includes("right") || text.includes("droite")) return "➡️";
+    if (text.includes("straight") || text.includes("tout droit")) return "⬆️";
+    if (text.includes("roundabout") || text.includes("rond-point")) return "🔄";
+    if (text.includes("u-turn") || text.includes("demi-tour")) return "↩️";
+    return "🧭";
+}
+
+function renderRoadbook() {
+    const currentKm = parseFloat(document.getElementById('kmInput').value) || 0;
+    let html = "";
+    
+    instructionsData.forEach((inst) => {
+        if (inst.km < currentKm - 0.1) return;
+
+        let distRestante = inst.km - currentKm;
+        let distStr = distRestante < 1 ? Math.round(distRestante * 1000) + " m" : distRestante.toFixed(1) + " km";
+        let icon = getDirectionIcon(inst.name, inst.desc);
+
+        html += `
+        <div class='instruction-card' onclick="map.setView([${inst.lat}, ${inst.lon}], 16);">
+            <div class="roadbook-icon">${icon}</div>
+            <div class='nav-block'>
+                <div class='pk-line'><span class='pk-val'>${distStr}</span></div>
+                <div class='detour-line'>PK ${inst.km.toFixed(1)}</div>
+            </div>
+            <div class='info-block'>
+                <div class='op-title'>${inst.name}</div>
+                <div class='st-name'>${inst.desc}</div>
+            </div>
+        </div>`;
+    });
+    
+    document.getElementById('roadbookContainer').innerHTML = html || "<div style='padding:20px; text-align:center;'>Aucune instruction à venir.</div>";
 }
 
 function renderList() {
