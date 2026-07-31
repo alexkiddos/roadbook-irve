@@ -2,21 +2,21 @@
 <html lang="fr">
 <head>
     <meta charset="utf-8">
-    <title>Test API OSRM Point à Point</title>
+    <title>Test API OSRM en Français</title>
     <style>
         body { font-family: -apple-system, Arial, sans-serif; color: #1e293b; line-height: 1.5; margin: 40px; background-color: #faf9f6; }
         h1 { color: #0284c7; border-bottom: 2px solid #0284c7; padding-bottom: 8px; }
         h2 { color: #334155; margin-top: 20px; }
-        pre { background: #0f172a; color: #38bdf8; padding: 15px; border-radius: 8px; overflow-x: auto; font-family: monospace; font-size: 13px; }
         .box { background: #ffffff; border: 1px solid #cbd5e1; padding: 20px; border-radius: 8px; margin-bottom: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
         button { background: #0284c7; color: white; border: none; padding: 10px 15px; border-radius: 5px; cursor: pointer; font-size: 14px; margin-top: 10px; }
         button:hover { background: #0369a1; }
         #resultats { margin-top: 10px; background: #f8fafc; padding: 10px; border-radius: 5px; border: 1px solid #e2e8f0; }
+        li { margin-bottom: 8px; }
     </style>
 </head>
 <body>
-    <h1>Test Minimaliste API OSRM (Corrigé)</h1>
-    <p>Ce fichier interroge l'endpoint <code>/route/v1/driving/</code> sans les paramètres superflus pour éviter l'erreur <code>InvalidQuery</code>.</p>
+    <h1>Test API OSRM (Instructions en Français)</h1>
+    <p>Ce script traduit les codes de manœuvre d'OSRM en un guidage textuel clair en français.</p>
 
     <div class="box">
         <h2>Test Interactif</h2>
@@ -26,6 +26,46 @@
     </div>
 
     <script>
+        // Fonction de traduction des manœuvres OSRM en français
+        function traduireEnFrancais(manoeuvre, nomVoie) {
+            const type = manoeuvre.type;
+            const mod = manoeuvre.modifier;
+            const voie = nomVoie && nomVoie.trim() !== "" ? ` sur ${nomVoie}` : "";
+
+            switch (type) {
+                case 'depart':
+                    return `Prenez le départ${voie}`;
+                case 'arrivee':
+                    return `Vous êtes arrivé à destination`;
+                case 'turn':
+                    if (mod === 'left') return `Tournez à gauche${voie}`;
+                    if (mod === 'right') return `Tournez à droite${voie}`;
+                    if (mod === 'slight left') return `Légèrement à gauche${voie}`;
+                    if (mod === 'slight right') return `Légèrement à droite${voie}`;
+                    if (mod === 'sharp left') return `Virage serré à gauche${voie}`;
+                    if (mod === 'sharp right') return `Virage serré à droite${voie}`;
+                    if (mod === 'straight') return `Continuez tout droit${voie}`;
+                    break;
+                case 'merge':
+                    return `Rejoignez la voie${voie}`;
+                case 'on ramp':
+                    return `Prenez la bretelle d'accès${voie}`;
+                case 'off ramp':
+                    return `Prenez la sortie${voie}`;
+                case 'fork':
+                    if (mod === 'left') return `Restez sur la gauche${voie}`;
+                    if (mod === 'right') return `Restez sur la droite${voie}`;
+                    break;
+                case 'roundabout':
+                    return `Au rond-point, prenez la sortie${voie}`;
+                case 'continue':
+                    return `Continuez${voie}`;
+                default:
+                    return `Suivez la direction${voie} (${type})`;
+            }
+            return `Procédez${voie}`;
+        }
+
         async function lancerTestOSRM() {
             const resultatDiv = document.getElementById('resultats');
             resultatDiv.innerHTML = "Requête en cours...";
@@ -36,7 +76,6 @@
             const arriveeLng = 4.8357; 
             const arriveeLat = 45.7640; 
 
-            // URL corrigée (sans language=fr)
             const url = `https://router.project-osrm.org/route/v1/driving/${departLng},${departLat};${arriveeLng},${arriveeLat}?steps=true&overview=false`;
 
             try {
@@ -48,8 +87,8 @@
                     const etapes = data.routes[0].legs[0].steps;
                     
                     etapes.forEach((step, index) => {
-                        let texte = step.maneuver.instruction || `${step.maneuver.type} sur ${step.name || 'la voie'}`;
-                        htmlContent += `<li><strong>Étape ${index + 1} :</strong> ${texte} (<em>${Math.round(step.distance)}m</em>)</li>`;
+                        let texteInstruction = traduireEnFrancais(step.maneuver, step.name);
+                        htmlContent += `<li><strong>Étape ${index + 1} :</strong> ${texteInstruction} (<em>${Math.round(step.distance)}m</em>)</li>`;
                     });
                     
                     htmlContent += "</ul>";
