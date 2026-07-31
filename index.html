@@ -2,7 +2,7 @@
 <html lang="fr">
 <head>
     <meta charset="utf-8">
-    <title>Test API OSRM en Français</title>
+    <title>Test API OSRM - Rues et Routes Françaises</title>
     <style>
         body { font-family: -apple-system, Arial, sans-serif; color: #1e293b; line-height: 1.5; margin: 40px; background-color: #faf9f6; }
         h1 { color: #0284c7; border-bottom: 2px solid #0284c7; padding-bottom: 8px; }
@@ -15,8 +15,8 @@
     </style>
 </head>
 <body>
-    <h1>Test API OSRM (Instructions en Français)</h1>
-    <p>Ce script traduit les codes de manœuvre d'OSRM en un guidage textuel clair en français.</p>
+    <h1>Test API OSRM (Gestion Rues &amp; Routes)</h1>
+    <p>Ce script extrait la référence (<code>ref</code>) prioritairement pour les routes, ou le nom (<code>name</code>) pour les rues.</p>
 
     <div class="box">
         <h2>Test Interactif</h2>
@@ -26,26 +26,44 @@
     </div>
 
     <script>
-        // Fonction de traduction des manœuvres OSRM en français
-        function traduireEnFrancais(manoeuvre, nomVoie) {
-            const type = manoeuvre.type;
-            const mod = manoeuvre.modifier;
-            const voie = nomVoie && nomVoie.trim() !== "" ? ` sur ${nomVoie}` : "";
+        // Fonction intelligente pour récupérer la route (ref) ou la rue (name)
+        function obtenirNomOuRoute(step) {
+            let designation = "";
+            
+            // Si une référence de route existe (ex: D901, A6, N12), on l'utilise en priorité
+            if (step.ref && step.ref.trim() !== "") {
+                designation = ` la route ${step.ref}`;
+            } 
+            // Sinon, si un nom de rue existe
+            else if (step.name && step.name.trim() !== "") {
+                designation = ` ${step.name}`;
+            }
+            
+            return designation;
+        }
+
+        // Traduction des manœuvres en français avec gestion de la voie
+        function traduireEnFrancais(step) {
+            const type = step.maneuver.type;
+            const mod = step.maneuver.modifier;
+            const voie = obtenirNomOuRoute(step);
 
             switch (type) {
                 case 'depart':
-                    return `Prenez le départ${voie}`;
+                    return `Prenez le départ${voie ? ' sur' + voie : ''}`;
                 case 'arrivee':
                     return `Vous êtes arrivé à destination`;
                 case 'turn':
-                    if (mod === 'left') return `Tournez à gauche${voie}`;
-                    if (mod === 'right') return `Tournez à droite${voie}`;
-                    if (mod === 'slight left') return `Légèrement à gauche${voie}`;
-                    if (mod === 'slight right') return `Légèrement à droite${voie}`;
-                    if (mod === 'sharp left') return `Virage serré à gauche${voie}`;
-                    if (mod === 'sharp right') return `Virage serré à droite${voie}`;
-                    if (mod === 'straight') return `Continuez tout droit${voie}`;
+                    if (mod === 'left') return `Tournez à gauche sur${voie}`;
+                    if (mod === 'right') return `Tournez à droite sur${voie}`;
+                    if (mod === 'slight left') return `Légèrement à gauche sur${voie}`;
+                    if (mod === 'slight right') return `Légèrement à droite sur${voie}`;
+                    if (mod === 'sharp left') return `Virage serré à gauche sur${voie}`;
+                    if (mod === 'sharp right') return `Virage serré à droite sur${voie}`;
+                    if (mod === 'straight') return `Continuez tout droit sur${voie}`;
                     break;
+                case 'new name':
+                    return `Continuez tout droit${voie ? ' sur' + voie : ''} (changement de nom)`;
                 case 'merge':
                     return `Rejoignez la voie${voie}`;
                 case 'on ramp':
@@ -53,13 +71,13 @@
                 case 'off ramp':
                     return `Prenez la sortie${voie}`;
                 case 'fork':
-                    if (mod === 'left') return `Restez sur la gauche${voie}`;
-                    if (mod === 'right') return `Restez sur la droite${voie}`;
+                    if (mod === 'left') return `Restez sur la gauche vers${voie}`;
+                    if (mod === 'right') return `Restez sur la droite vers${voie}`;
                     break;
                 case 'roundabout':
                     return `Au rond-point, prenez la sortie${voie}`;
                 case 'continue':
-                    return `Continuez${voie}`;
+                    return `Continuez${voie ? ' sur' + voie : ''}`;
                 default:
                     return `Suivez la direction${voie} (${type})`;
             }
@@ -87,7 +105,7 @@
                     const etapes = data.routes[0].legs[0].steps;
                     
                     etapes.forEach((step, index) => {
-                        let texteInstruction = traduireEnFrancais(step.maneuver, step.name);
+                        let texteInstruction = traduireEnFrancais(step);
                         htmlContent += `<li><strong>Étape ${index + 1} :</strong> ${texteInstruction} (<em>${Math.round(step.distance)}m</em>)</li>`;
                     });
                     
