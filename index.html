@@ -15,42 +15,14 @@
     </style>
 </head>
 <body>
-    <h1>Test Minimaliste API OSRM (Départ / Arrivée)</h1>
-    <p>Ce fichier permet de tester rapidement si l'API OSRM fonctionne avec votre application en interrogeant l'endpoint <code>/route/v1/driving/</code> avec deux coordonnées (Paris → Lyon).</p>
+    <h1>Test Minimaliste API OSRM (Corrigé)</h1>
+    <p>Ce fichier interroge l'endpoint <code>/route/v1/driving/</code> sans les paramètres superflus pour éviter l'erreur <code>InvalidQuery</code>.</p>
 
     <div class="box">
-        <h2>1. Test Interactif</h2>
-        <p>Cliquez sur le bouton ci-dessous pour lancer la requête vers OSRM et afficher les étapes dans l'encadré et dans la console du navigateur :</p>
+        <h2>Test Interactif</h2>
         <button onclick="lancerTestOSRM()">Lancer le test OSRM</button>
-        
         <h3>Résultats :</h3>
         <div id="resultats">En attente du lancement du test...</div>
-    </div>
-
-    <div class="box">
-        <h2>2. Code source de la fonction</h2>
-        <pre><code>// Coordonnées au format Longitude,Latitude
-const departLng = 2.3522;  // Paris (Lon)
-const departLat = 48.8566; // Paris (Lat)
-const arriveeLng = 4.8357; // Lyon (Lon)
-const arriveeLat = 45.7640; // Lyon (Lat)
-
-const url = `https://router.project-osrm.org/route/v1/driving/${departLng},${departLat};${arriveeLng},${arriveeLat}?steps=true&overview=false&language=fr`;
-
-fetch(url)
-  .then(response => response.json())
-  .then(data => {
-      if (data.code === 'Ok') {
-          console.log("Itinéraire trouvé !");
-          const etapes = data.routes[0].legs[0].steps;
-          etapes.forEach((step, index) => {
-              console.log(`${index + 1}. ${step.maneuver.instruction || step.maneuver.type} (${step.distance}m)`);
-          });
-      } else {
-          console.error("Erreur OSRM :", data);
-      }
-  })
-  .catch(err => console.error("Erreur réseau :", err));</code></pre>
     </div>
 
     <script>
@@ -58,13 +30,14 @@ fetch(url)
             const resultatDiv = document.getElementById('resultats');
             resultatDiv.innerHTML = "Requête en cours...";
 
-            // Coordonnées Paris -> Lyon
+            // Coordonnées Paris -> Lyon (Longitude, Latitude)
             const departLng = 2.3522;  
             const departLat = 48.8566; 
             const arriveeLng = 4.8357; 
             const arriveeLat = 45.7640; 
 
-            const url = `https://router.project-osrm.org/route/v1/driving/${departLng},${departLat};${arriveeLng},${arriveeLat}?steps=true&overview=false&language=fr`;
+            // URL corrigée (sans language=fr)
+            const url = `https://router.project-osrm.org/route/v1/driving/${departLng},${departLat};${arriveeLng},${arriveeLat}?steps=true&overview=false`;
 
             try {
                 const response = await fetch(url);
@@ -75,19 +48,17 @@ fetch(url)
                     const etapes = data.routes[0].legs[0].steps;
                     
                     etapes.forEach((step, index) => {
-                        let texte = step.maneuver.instruction || step.maneuver.type;
+                        let texte = step.maneuver.instruction || `${step.maneuver.type} sur ${step.name || 'la voie'}`;
                         htmlContent += `<li><strong>Étape ${index + 1} :</strong> ${texte} (<em>${Math.round(step.distance)}m</em>)</li>`;
                     });
                     
                     htmlContent += "</ul>";
                     resultatDiv.innerHTML = htmlContent;
-                    console.log("Itinéraire chargé avec succès !", data);
                 } else {
                     resultatDiv.innerHTML = `<span style="color: red;">Erreur OSRM : ${data.code}</span>`;
                 }
             } catch (err) {
                 resultatDiv.innerHTML = `<span style="color: red;">Erreur réseau : ${err.message}</span>`;
-                console.error(err);
             }
         }
     </script>
