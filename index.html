@@ -141,7 +141,8 @@
 let map, gpxLine, userMarker, watchId = null, isAutoTrack = false, isSimulating = false, simInterval = null;
 let gpxPoints = [], globalData = [], markers = {};
 let lastValidLat = null, lastValidLng = null;
-let wakeLock = null; // Verrou pour empêcher la mise en veille de l'écran
+let wakeLock = null;
+let isInitialGPXLoad = false; // Drapeau pour identifier le chargement d'un GPX
 const RAYON_RECHERCHE_KM = 3.0, PUISSANCE_MIN_KW = 100.0, KM_MIN_DEPART = 5.0;
 
 // ============================================================================
@@ -535,6 +536,8 @@ function distanceHaversine(lat1, lon1, lat2, lon2) {
 function handleGPXUpload(event) {
     const file = event.target.files[0];
     if(!file) return;
+    
+    isInitialGPXLoad = true; // Activer le drapeau de chargement GPX
     log("GPX", `Fichier '${file.name}' sélectionné. Lecture en cours...`);
     const reader = new FileReader();
     reader.onload = (e) => {
@@ -776,6 +779,15 @@ function fetchLiveQualicharge() {
                 });
                 log("LIVE", "Disponibilités mises à jour avec succès !");
                 renderList();
+
+                // Ferme le terminal UNIQUEMENT si c'est la séquence initiale de chargement du GPX
+                if (isInitialGPXLoad) {
+                    const term = document.getElementById('terminal-logs');
+                    if (term && term.style.display === 'block') {
+                        toggleLogs();
+                    }
+                    isInitialGPXLoad = false; // Réinitialisation
+                }
             },
             error: function(err) { log("LIVE", "Erreur chargement flux live: " + err.message, true); }
         });
@@ -804,7 +816,6 @@ function renderList() {
         
         let m = L.circleMarker([s.lat, s.lng], {radius:8, fillColor:color, color:'#fff', weight:1, fillOpacity:0.9}).addTo(map);
         
-        // Coordonnées GPS + Lien Google Maps
         const coordsStr = `${s.lat.toFixed(5)}, ${s.lng.toFixed(5)}`;
         const gmapsUrl = `https://www.google.com/maps/search/?api=1&query=${s.lat},${s.lng}`;
 
