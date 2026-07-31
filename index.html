@@ -141,7 +141,39 @@
 let map, gpxLine, userMarker, watchId = null, isAutoTrack = false, isSimulating = false, simInterval = null;
 let gpxPoints = [], globalData = [], markers = {};
 let lastValidLat = null, lastValidLng = null;
+let wakeLock = null; // Verrou pour empêcher la mise en veille de l'écran
 const RAYON_RECHERCHE_KM = 3.0, PUISSANCE_MIN_KW = 100.0, KM_MIN_DEPART = 5.0;
+
+// ============================================================================
+// GESTION DE LA MISE EN VEILLE DE L'ÉCRAN (WAKE LOCK API)
+// ============================================================================
+async function requestWakeLock() {
+  if ('wakeLock' in navigator) {
+    try {
+      wakeLock = await navigator.wakeLock.request('screen');
+      log("WAKE LOCK", "💡 Maintien de l'écran allumé activé.");
+    } catch (err) {
+      log("WAKE LOCK", "Erreur d'activation : " + err.message, true);
+    }
+  } else {
+    log("WAKE LOCK", "API Wake Lock non supportée par ce navigateur.", true);
+  }
+}
+
+function releaseWakeLock() {
+  if (wakeLock !== null) {
+    wakeLock.release().then(() => {
+      wakeLock = null;
+      log("WAKE LOCK", "🌙 Ecran autorisé à se mettre en veille.");
+    });
+  }
+}
+
+document.addEventListener('visibilitychange', async () => {
+  if (wakeLock !== null && document.visibilityState === 'visible' && (isAutoTrack || isSimulating)) {
+    await requestWakeLock();
+  }
+});
 
 // ============================================================================
 // GESTION DU STOCKAGE LOCAL INDEXEDDB (STATIONS ET COMMUNES)
@@ -408,6 +440,7 @@ function toggleAutoTrack() {
     const btn = document.getElementById('autoTrackBtn');
     if (isAutoTrack) {
         btn.classList.add('active-track');
+        requestWakeLock();
         if(navigator.geolocation) {
             watchId = navigator.geolocation.watchPosition(
                 pos => updatePosition(pos.coords.latitude, pos.coords.longitude, pos.coords.heading),
@@ -418,6 +451,7 @@ function toggleAutoTrack() {
         }
     } else {
         btn.classList.remove('active-track');
+        releaseWakeLock();
         if(watchId) navigator.geolocation.clearWatch(watchId);
         lastValidLat = null; lastValidLng = null;
         log("GPS", "Suivi live désactivé.");
@@ -436,6 +470,7 @@ function toggleSimulation() {
             return;
         }
         btn.classList.add('active-track');
+        requestWakeLock();
         log("SIM", "Démarrage de la simulation de trajet...");
         let index = 0;
         simInterval = setInterval(() => {
@@ -452,6 +487,7 @@ function toggleSimulation() {
         }, 300);
     } else {
         btn.classList.remove('active-track');
+        releaseWakeLock();
         if(simInterval) clearInterval(simInterval);
         log("SIM", "Simulation arrêtée.");
     }
