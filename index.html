@@ -72,11 +72,9 @@
       .multi-select-dropdown.show { display: block; }
       .multi-select-item { display: flex; align-items: center; gap: 6px; padding: 3px 0; cursor: pointer; font-size: 11px; }
 
-      /* GESTION DU MASQUAGE/AFFICHAGE DES VUES */
       .view-panel { display: none; }
       .view-panel.active { display: block; }
 
-      /* CARTES STATIONS & ROADBOOK */
       .station-card, .instruction-card { display: flex; flex-direction: column; border-bottom: 1px solid var(--border); padding: 12px 6px; cursor: pointer; background: var(--card-bg); border-radius: 6px; margin-bottom: 4px;}
       .instruction-card { flex-direction: row; align-items: center; gap: 10px; }
       .station-card:hover, .instruction-card:hover { border-color: var(--op-color); }
@@ -125,11 +123,9 @@
   
   <div id="main-content">
     <div class="header-controls">
-      <!-- CHAMP KM AVEC STEP A 0.1 -->
       <b>km :</b> 
       <input type='number' id='kmInput' class='input-field' value="0.0" step="0.1" oninput='updateCurrentView()' max="9999">
       
-      <!-- BOUTON ICÔNE POUR BASCULER DU MODE STATIONS AU ROADBOOK -->
       <button class="refresh-btn" id="modeToggleBtn" onclick="toggleViewMode()" title="Basculer vers le Roadbook">🔌</button>
 
       <div class="multi-select-container" id="opSelectContainer">
@@ -148,14 +144,12 @@
       <button class='refresh-btn' onclick="fetchLiveQualicharge()" title="Rafraîchir Live">🔄</button>
     </div>
 
-    <!-- VUE STATIONS IRVE -->
     <div id="stationsContainer" class="view-panel active">
         <div style="text-align:center; opacity:0.6; padding: 20px;">Veuillez charger un fichier GPX pour commencer.<br><br>💡 (Bouton 📁)</div>
     </div>
 
-    <!-- VUE ROADBOOK / INSTRUCTIONS -->
     <div id="roadbookContainer" class="view-panel">
-        <div style="text-align:center; opacity:0.6; padding: 20px;">Les instructions BRouter s'afficheront ici après le chargement du GPX.</div>
+        <div style="text-align:center; opacity:0.6; padding: 20px;">Le Roadbook de rallye s'affichera ici après le chargement du GPX.</div>
     </div>
   </div>
 
@@ -165,13 +159,10 @@ let gpxPoints = [], globalData = [], instructionsData = [], markers = {};
 let lastValidLat = null, lastValidLng = null;
 let wakeLock = null;
 let isInitialGPXLoad = false;
-let currentMode = 'stations'; // 'stations' ou 'roadbook'
+let currentMode = 'stations';
 
 const RAYON_RECHERCHE_KM = 3.0, PUISSANCE_MIN_KW = 100.0, KM_MIN_DEPART = 5.0;
 
-// ============================================================================
-// GESTION DU MODE D'AFFICHAGE (IRVE ⇄ ROADBOOK)
-// ============================================================================
 function toggleViewMode() {
     currentMode = (currentMode === 'stations') ? 'roadbook' : 'stations';
     
@@ -205,9 +196,6 @@ function updateCurrentView() {
     }
 }
 
-// ============================================================================
-// GESTION DE LA MISE EN VEILLE DE L'ÉCRAN (WAKE LOCK API)
-// ============================================================================
 async function requestWakeLock() {
   if ('wakeLock' in navigator) {
     try {
@@ -216,8 +204,6 @@ async function requestWakeLock() {
     } catch (err) {
       log("WAKE LOCK", "Erreur d'activation : " + err.message, true);
     }
-  } else {
-    log("WAKE LOCK", "API Wake Lock non supportée par ce navigateur.", true);
   }
 }
 
@@ -236,9 +222,6 @@ document.addEventListener('visibilitychange', async () => {
   }
 });
 
-// ============================================================================
-// GESTION DU STOCKAGE LOCAL INDEXEDDB (STATIONS ET COMMUNES)
-// ============================================================================
 const DB_NAME = 'IRVEDatabase';
 const DB_VERSION = 2;
 const STORE_STATIONS = 'stations';
@@ -250,19 +233,14 @@ function openDB() {
     const request = indexedDB.open(DB_NAME, DB_VERSION);
     request.onupgradeneeded = (e) => {
       const db = e.target.result;
-      if (!db.objectStoreNames.contains(STORE_STATIONS)) {
-        db.createObjectStore(STORE_STATIONS);
-      }
-      if (!db.objectStoreNames.contains(STORE_COMMUNES)) {
-        db.createObjectStore(STORE_COMMUNES);
-      }
+      if (!db.objectStoreNames.contains(STORE_STATIONS)) db.createObjectStore(STORE_STATIONS);
+      if (!db.objectStoreNames.contains(STORE_COMMUNES)) db.createObjectStore(STORE_COMMUNES);
     };
     request.onsuccess = (e) => resolve(e.target.result);
     request.onerror = (e) => reject(e.target.error);
   });
 }
 
-// ---------------- GESTION BASE COMMUNES ----------------
 async function loadOrFetchCommunesDB() {
     try {
         const db = await openDB();
@@ -277,32 +255,21 @@ async function loadOrFetchCommunesDB() {
             return;
         }
 
-        if (!navigator.onLine) {
-            log("COMMUNES", "🌐 Hors-ligne : Impossible d'initialiser la base communes.", true);
-            return;
-        }
+        if (!navigator.onLine) return;
 
-        log("COMMUNES", "Téléchargement de la base officielle des communes (JSON)...");
-        
+        log("COMMUNES", "Téléchargement de la base officielle des communes...");
         const response = await fetch("https://geo.api.gouv.fr/communes?fields=code,nom");
         if (!response.ok) throw new Error(`HTTP error ${response.status}`);
         
         const communes = await response.json();
-        log("COMMUNES", `Analyse et stockage de ${communes.length} communes...`);
-
         const writeTx = db.transaction(STORE_COMMUNES, 'readwrite');
         const store = writeTx.objectStore(STORE_COMMUNES);
 
         communes.forEach(item => {
-            if (item.code && item.nom) {
-                store.put(item.nom, item.code);
-            }
+            if (item.code && item.nom) store.put(item.nom, item.code);
         });
 
-        writeTx.oncomplete = () => {
-            log("COMMUNES", "💾 Base officielle des communes enregistrée dans IndexedDB !");
-        };
-
+        writeTx.oncomplete = () => log("COMMUNES", "💾 Base des communes enregistrée.");
     } catch (e) {
         log("COMMUNES", "Erreur initialisation communes : " + e.message, true);
     }
@@ -319,29 +286,22 @@ async function getCommunesMap(codesInseeSet) {
 
         await new Promise((resolve) => {
             let pending = codesInseeSet.size;
-
             codesInseeSet.forEach(code => {
-                if (!code) {
-                    if (--pending === 0) resolve();
-                    return;
-                }
+                if (!code) { if (--pending === 0) resolve(); return; }
                 const req = store.get(code);
                 req.onsuccess = () => {
                     if (req.result) communesMap.set(code, req.result);
                     if (--pending === 0) resolve();
                 };
-                req.onerror = () => {
-                    if (--pending === 0) resolve();
-                };
+                req.onerror = () => { if (--pending === 0) resolve(); };
             });
         });
     } catch (e) {
-        log("COMMUNES", "Erreur lecture des communes : " + e.message, true);
+        log("COMMUNES", "Erreur lecture communes : " + e.message, true);
     }
     return communesMap;
 }
 
-// ---------------- GESTION BASE STATIONS ----------------
 async function saveStaticDataToDB(data) {
   try {
     const db = await openDB();
@@ -349,9 +309,9 @@ async function saveStaticDataToDB(data) {
     const store = tx.objectStore(STORE_STATIONS);
     store.put(data, 'cached_raw_data');
     store.put(Date.now(), 'last_update_timestamp');
-    log("INDEXEDDB", "💾 Base IRVE statique sauvegardée localement.");
+    log("INDEXEDDB", "💾 Base IRVE sauvegardée localement.");
   } catch (err) {
-    log("INDEXEDDB", "Erreur de sauvegarde stations : " + err.message, true);
+    log("INDEXEDDB", "Erreur sauvegarde stations : " + err.message, true);
   }
 }
 
@@ -361,24 +321,13 @@ async function getCachedStaticData() {
     const tx = db.transaction(STORE_STATIONS, 'readonly');
     const store = tx.objectStore(STORE_STATIONS);
     
-    const data = await new Promise(r => {
-      const req = store.get('cached_raw_data');
-      req.onsuccess = () => r(req.result);
-    });
-    
-    const timestamp = await new Promise(r => {
-      const req = store.get('last_update_timestamp');
-      req.onsuccess = () => r(req.result);
-    });
+    const data = await new Promise(r => { const req = store.get('cached_raw_data'); req.onsuccess = () => r(req.result); });
+    const timestamp = await new Promise(r => { const req = store.get('last_update_timestamp'); req.onsuccess = () => r(req.result); });
 
     if (!data || !timestamp) return null;
-
     const ageInDays = (Date.now() - timestamp) / (1000 * 60 * 60 * 24);
     return { data, isOutdated: ageInDays > MAX_AGE_DAYS };
-  } catch (err) {
-    log("INDEXEDDB", "Erreur de lecture : " + err.message, true);
-    return null;
-  }
+  } catch (err) { return null; }
 }
 
 function log(tag, message, isError=false) {
@@ -416,11 +365,7 @@ function toggleLogs() {
 
 function initMap() {
     map = L.map('map', {zoomControl: true}).setView([46.603354, 1.888334], 5);
-    
-    L.tileLayer('https://{s}.tile.openstreetmap.de/tiles/osmde/{z}/{x}/{y}.png', { 
-      minZoom: 4,
-      maxZoom: 19
-    }).addTo(map);
+    L.tileLayer('https://{s}.tile.openstreetmap.de/tiles/osmde/{z}/{x}/{y}.png', { minZoom: 4, maxZoom: 19 }).addTo(map);
 
     const CustomActionControls = L.Control.extend({
         options: { position: 'topleft' },
@@ -429,24 +374,24 @@ function initMap() {
             
             let b1 = L.DomUtil.create('a', 'brouter-ctrl-btn', container);
             b1.innerHTML = '<svg viewBox="0 0 24 24"><path d="M20.5 3l-.16.03L15 5.1 9 3 3.36 4.9c-.21.07-.36.25-.36.48V20.5c0 .28.22.5.5.5l.16-.03L9 18.9l6 2.1 5.64-1.9c.21-.07.36-.25.36-.48V3.5c0-.28-.22-.5-.5-.5zM15 19l-6-2.11V5l6 2.11V19z"/></svg>';
-            b1.title = "Zoomer sur toute la trace";
+            b1.title = "Zoomer sur la trace";
             b1.onclick = (e) => { e.stopPropagation(); fitTraceBounds(); };
 
             let b2 = L.DomUtil.create('a', 'brouter-ctrl-btn', container);
             b2.innerHTML = '<svg viewBox="0 0 24 24"><path d="M12 8c-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4-1.79-4-4-4zm8.94 3c-.46-4.17-3.77-7.48-7.94-7.94V1h-2v2.06C6.83 3.52 3.52 6.83 3.06 11H1v2h2.06c.46 4.17 3.77 7.48 7.94 7.94V23h2v-2.06c4.17-.46 7.48-3.77 7.94-7.94H23v-2h-2.06zM12 19c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7z"/></svg>';
-            b2.title = "Acquisition GPS ponctuelle";
+            b2.title = "GPS ponctuel";
             b2.onclick = (e) => { e.stopPropagation(); getSinglePosition(); };
 
             let b3 = L.DomUtil.create('a', 'brouter-ctrl-btn', container);
             b3.id = 'autoTrackBtn';
             b3.innerHTML = '<svg viewBox="0 0 24 24"><path d="M18.92 6.01C18.72 5.42 18.16 5 17.5 5h-11c-.66 0-1.22.42-1.42 1.01L3 12v8c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h12v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-8l-2.08-5.99zM6.85 7h10.29l1.04 3H5.81l1.04-3zM19 17H5v-4.66l.12-.34h13.76l.12.34V17z"/><circle cx="7.5" cy="14.5" r="1.5"/><circle cx="16.5" cy="14.5" r="1.5"/></svg>';
-            b3.title = "Activer/Désactiver suivi live";
+            b3.title = "Suivi live GPS";
             b3.onclick = (e) => { e.stopPropagation(); toggleAutoTrack(); };
 
             let b4 = L.DomUtil.create('a', 'brouter-ctrl-btn', container);
             b4.id = 'simTrackBtn';
             b4.innerHTML = '<svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>';
-            b4.title = "Simuler le trajet sur la trace";
+            b4.title = "Simuler trajet";
             b4.onclick = (e) => { e.stopPropagation(); toggleSimulation(); };
 
             return container;
@@ -461,7 +406,7 @@ function initMap() {
         }
     });
 
-    log("INIT", "Carte Leaflet initialisée.");
+    log("INIT", "Carte initialisée.");
     loadOrFetchCommunesDB();
 }
 
@@ -471,25 +416,13 @@ function toggleOpDropdown(e) {
 }
 
 function fitTraceBounds() {
-    if(gpxLine) {
-        map.fitBounds(gpxLine.getBounds());
-        log("MAP", "Zoom ajusté à la trace GPX.");
-    } else {
-        log("MAP", "Aucune trace GPX chargée.", true);
-    }
+    if(gpxLine) map.fitBounds(gpxLine.getBounds());
 }
 
 function getSinglePosition() {
-    if(!navigator.geolocation) {
-        log("GPS", "Géolocalisation non supportée.", true);
-        return;
-    }
-    log("GPS", "Acquisition d'une position GPS ponctuelle...");
+    if(!navigator.geolocation) return;
     navigator.geolocation.getCurrentPosition(
-        pos => {
-            updatePosition(pos.coords.latitude, pos.coords.longitude, pos.coords.heading);
-            log("GPS", "Position ponctuelle acquise avec succès.");
-        },
+        pos => updatePosition(pos.coords.latitude, pos.coords.longitude, pos.coords.heading),
         err => log("GPS", "Erreur acquisition : " + err.message, true),
         { enableHighAccuracy: true, timeout: 10000 }
     );
@@ -508,14 +441,12 @@ function toggleAutoTrack() {
                 err => log("GPS", "Erreur : " + err.message, true),
                 { enableHighAccuracy: true, maximumAge: 3000 }
             );
-            log("GPS", "Suivi live activé.");
         }
     } else {
         btn.classList.remove('active-track');
         releaseWakeLock();
         if(watchId) navigator.geolocation.clearWatch(watchId);
         lastValidLat = null; lastValidLng = null;
-        log("GPS", "Suivi live désactivé.");
     }
 }
 
@@ -525,21 +456,12 @@ function toggleSimulation() {
     const btn = document.getElementById('simTrackBtn');
     
     if(isSimulating) {
-        if(gpxPoints.length === 0) {
-            log("SIM", "Impossible de simuler : aucun fichier GPX chargé.", true);
-            isSimulating = false;
-            return;
-        }
+        if(gpxPoints.length === 0) { isSimulating = false; return; }
         btn.classList.add('active-track');
         requestWakeLock();
-        log("SIM", "Démarrage de la simulation de trajet...");
         let index = 0;
         simInterval = setInterval(() => {
-            if(index >= gpxPoints.length) {
-                toggleSimulation();
-                log("SIM", "Simulation terminée (fin du tracé).");
-                return;
-            }
+            if(index >= gpxPoints.length) { toggleSimulation(); return; }
             let pt = gpxPoints[index];
             let nextPt = gpxPoints[index + 1] || pt;
             let heading = Math.atan2(nextPt.lon - pt.lon, nextPt.lat - pt.lat) * (180 / Math.PI);
@@ -550,7 +472,6 @@ function toggleSimulation() {
         btn.classList.remove('active-track');
         releaseWakeLock();
         if(simInterval) clearInterval(simInterval);
-        log("SIM", "Simulation arrêtée.");
     }
 }
 
@@ -564,7 +485,6 @@ function updatePosition(lat, lng, heading) {
     lastValidLng = lng;
 
     map.panTo([lat, lng], {animate: true, duration: 0.3});
-    
     let h = heading || 0;
     let svg = `<div style="width:32px;height:32px;"><svg class="user-loc-arrow" style="transform: rotate(${h}deg);" viewBox="0 0 24 24"><path fill="#0284c7" stroke="#ffffff" stroke-width="2" d="M12 2L4.5 20.29l.71.71L12 18l6.79 3 .71-.71z"/></svg></div>`;
     
@@ -593,19 +513,27 @@ function distanceHaversine(lat1, lon1, lat2, lon2) {
     return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
 }
 
-function handleGPXUpload(event) {
+// ============================================================================
+// PARSING GPX ET MAP-MATCHING OSRM (1 SEULE REQUÊTE POUR UN ROADBOOK FIDÈLE)
+// ============================================================================
+async function handleGPXUpload(event) {
     const file = event.target.files[0];
     if(!file) return;
     
     isInitialGPXLoad = true;
     log("GPX", `Fichier '${file.name}' sélectionné. Lecture en cours...`);
     const reader = new FileReader();
-    reader.onload = (e) => {
+    
+    reader.onload = async (e) => {
         const parser = new DOMParser();
         const xml = parser.parseFromString(e.target.result, "text/xml");
         
-        // 1. Extraire la trace (<trkpt>)
         const trkpts = xml.getElementsByTagName("trkpt");
+        if(trkpts.length === 0) {
+            log("GPX", "Aucun point de trace trouvé dans le GPX.", true);
+            return;
+        }
+
         gpxPoints = [];
         let km = 0, prev = null;
         for(let i=0; i<trkpts.length; i++) {
@@ -615,31 +543,73 @@ function handleGPXUpload(event) {
             gpxPoints.push({lat, lon, km});
             prev = {lat, lon};
         }
-        log("GPX", `${gpxPoints.length} points extraits. Distance totale : ${km.toFixed(1)} km.`);
+        log("GPX", `${gpxPoints.length} points de trace extraits (${km.toFixed(1)} km).`);
         
-        // 2. Extraire les waypoints / instructions BROUTER (<wpt>)
-        const wpts = xml.getElementsByTagName("wpt");
-        instructionsData = [];
-        for(let i = 0; i < wpts.length; i++) {
-            let lat = parseFloat(wpts[i].getAttribute("lat"));
-            let lon = parseFloat(wpts[i].getAttribute("lon"));
-            let name = wpts[i].getElementsByTagName("name")[0]?.textContent || "Instruction";
-            let desc = wpts[i].getElementsByTagName("desc")[0]?.textContent || "";
-            
-            let minDist = Infinity, wptKm = 0;
-            for(let pt of gpxPoints) {
-                let d = distanceHaversine(lat, lon, pt.lat, pt.lon);
-                if(d < minDist) { minDist = d; wptKm = pt.km; }
-            }
-            instructionsData.push({ lat, lon, name, desc, km: wptKm });
-        }
-        instructionsData.sort((a,b) => a.km - b.km);
-        log("GPX", `${instructionsData.length} instructions Roadbook extraites.`);
-
         if(gpxLine) map.removeLayer(gpxLine);
         gpxLine = L.polyline(gpxPoints.map(p => [p.lat, p.lon]), {color: '#0284c7', weight: 4}).addTo(map);
         map.fitBounds(gpxLine.getBounds());
+
+        // GENERATION DU ROADBOOK DE RALLYE VIA MAP-MATCHING OSRM (1 SEULE REQUÊTE GLOBAL)
+        log("ROADBOOK", "Génération du roadbook via OSRM Map-Matching...");
         
+        let sampled = [];
+        const step = Math.max(1, Math.floor(gpxPoints.length / 80)); // Echantillonnage (~80 points max)
+        for (let i = 0; i < gpxPoints.length; i += step) {
+            sampled.push(gpxPoints[i]);
+        }
+        if (sampled[sampled.length - 1] !== gpxPoints[gpxPoints.length - 1]) {
+            sampled.push(gpxPoints[gpxPoints.length - 1]);
+        }
+
+        const coordString = sampled.map(p => `${p.lon},${p.lat}`).join(';');
+        const matchUrl = `https://router.project-osrm.org/match/v1/driving/${coordString}?overview=false&steps=true&language=fr`;
+
+        try {
+            const resp = await fetch(matchUrl);
+            const data = await resp.json();
+
+            if (data.code === 'Ok' && data.matchings && data.matchings.length > 0) {
+                instructionsData = [];
+                let runningKm = 0;
+
+                data.matchings.forEach(matching => {
+                    matching.legs.forEach(leg => {
+                        leg.steps.forEach(step => {
+                            runningKm += step.distance / 1000;
+                            
+                            let streetName = step.name ? `sur ${step.name}` : '';
+                            let refName = step.ref ? `(${step.ref})` : '';
+                            let modifier = step.maneuver.modifier || '';
+                            let type = step.maneuver.type;
+
+                            let text = step.maneuver.instruction || `${type} ${modifier} ${streetName} ${refName}`;
+
+                            if (type === 'roundabout' || type === 'rotary') {
+                                let exit = step.maneuver.exit ? `${step.maneuver.exit}e` : '';
+                                text = `Au rond-point, prendre la ${exit} sortie ${streetName} ${refName}`;
+                            }
+
+                            if (type !== 'suppress') {
+                                instructionsData.push({
+                                    lat: step.maneuver.location[1],
+                                    lon: step.maneuver.location[0],
+                                    name: text.trim(),
+                                    desc: `Dans ${(step.distance).toFixed(0)}m`,
+                                    km: runningKm
+                                });
+                            }
+                        });
+                    });
+                });
+
+                log("ROADBOOK", `${instructionsData.length} instructions de guidage générées avec succès !`);
+            } else {
+                log("ROADBOOK", "Map-Matching OSRM indisponible.", true);
+            }
+        } catch (err) {
+            log("ROADBOOK", "Erreur réseau OSRM : " + err.message, true);
+        }
+
         toggleLogs(); 
         fetchAndFilterStations();
     };
@@ -647,37 +617,25 @@ function handleGPXUpload(event) {
 }
 
 async function fetchAndFilterStations() {
-    log("ÉTAPE 1", "Recherche de la base IRVE en local (IndexedDB)...");
     const cached = await getCachedStaticData();
     let hasLoadedData = false;
 
     if (cached) {
-        log("INDEXEDDB", "⚡ Base locale trouvée ! Traitement immédiat.");
+        log("INDEXEDDB", "⚡ Base locale IRVE chargée !");
         await processStaticData(cached.data);
         hasLoadedData = true;
-
-        if (!cached.isOutdated || !navigator.onLine) {
-            if (!navigator.onLine) log("RÉSEAU", "🌐 Mode Hors-ligne : Utilisation exclusive des données locales.");
-            return;
-        }
-        log("RÉSEAU", "🔄 Base locale > 7 jours. Mise à jour en arrière-plan...");
+        if (!cached.isOutdated || !navigator.onLine) return;
     }
 
     if (navigator.onLine) {
-        log("RÉSEAU", "Recherche du fichier IRVE statique sur data.gouv.fr...");
+        log("RÉSEAU", "Téléchargement base IRVE statique data.gouv.fr...");
         fetch("https://www.data.gouv.fr/api/1/datasets/infrastructures-de-recharge-pour-vehicules-electriques-donnees-ouvertes/")
         .then(res => res.json())
         .then(data => {
             const url = data.resources.find(r => r.title.toLowerCase().includes('statique')).latest;
-            log("STATIQUE", `Fichier trouvé. Téléchargement et analyse CSV en cours...`);
-            
             Papa.parse(url, {
-                download: true,
-                header: true,
-                skipEmptyLines: true,
+                download: true, header: true, skipEmptyLines: true,
                 complete: async function(results) {
-                    log("STATIQUE", `${results.data.length} bornes brutes téléchargées. Sauvegarde locale...`);
-                    
                     const cleanRows = results.data.map(row => ({
                         puissance_nominale: row.puissance_nominale || row.puissance_max_kw,
                         coordonneesXY: row.coordonneesXY || row.xy_coords || row.coordonnees,
@@ -687,17 +645,11 @@ async function fetchAndFilterStations() {
                         id_station_itinerance: row.id_station_itinerance,
                         id_pdc_itinerance: row.id_pdc_itinerance
                     }));
-
                     await saveStaticDataToDB(cleanRows);
-                    
-                    if (!hasLoadedData) {
-                        await processStaticData(cleanRows);
-                    }
+                    if (!hasLoadedData) await processStaticData(cleanRows);
                 }
             });
         }).catch(e => log("RÉSEAU", "Erreur réseau: " + e.message, true));
-    } else if (!hasLoadedData) {
-        log("RÉSEAU", "Vous êtes hors-ligne et aucune base n'a encore été enregistrée.", true);
     }
 }
 
@@ -723,12 +675,9 @@ async function processStaticData(rawData) {
 
         if(!stationsMap.has(stId)) {
             stationsMap.set(stId, {
-                id: stId, 
-                nom: row.nom_station, 
-                code_insee: codeInsee,
+                id: stId, nom: row.nom_station, code_insee: codeInsee,
                 commune: codeInsee ? `INSEE: ${codeInsee}` : "Commune inconnue",
-                op: opName,
-                lat: lat, lng: lon, pwr: pwr, pdcs: []
+                op: opName, lat: lat, lng: lon, pwr: pwr, pdcs: []
             });
         }
         let st = stationsMap.get(stId);
@@ -736,17 +685,13 @@ async function processStaticData(rawData) {
         st.pdcs.push(row.id_pdc_itinerance);
     });
 
-    log("COMMUNES", `Résolution locale des noms de villes pour ${codesInseeSet.size} codes INSEE...`);
     const communesLookup = await getCommunesMap(codesInseeSet);
-    
     stationsMap.forEach(st => {
         if (st.code_insee && communesLookup.has(st.code_insee)) {
             st.commune = communesLookup.get(st.code_insee);
         }
     });
 
-    log("TRAITEMENT", `${stationsMap.size} stations rapides identifiées. Projection sur le GPX...`);
-    
     let sampled = gpxPoints.filter((_, i) => i % 3 === 0);
     globalData = [];
     let activeOperators = new Set();
@@ -757,12 +702,8 @@ async function processStaticData(rawData) {
             let d = distanceHaversine(st.lat, st.lng, pt.lat, pt.lon);
             if(d < minDist) { minDist = d; bestKm = pt.km; }
         }
-        
         if (minDist <= RAYON_RECHERCHE_KM && bestKm >= KM_MIN_DEPART) {
-            globalData.push({
-                ...st, km: bestKm, detour: minDist,
-                dispo: st.pdcs.length, total: st.pdcs.length, liveInfo: []
-            });
+            globalData.push({ ...st, km: bestKm, detour: minDist, dispo: st.pdcs.length, total: st.pdcs.length, liveInfo: [] });
             activeOperators.add(st.op);
         }
     });
@@ -779,14 +720,12 @@ async function processStaticData(rawData) {
     });
     updateOpHeaderLabel();
 
-    log("PROJECTION", `${globalData.length} stations retenues le long du tracé.`);
     updateCurrentView();
     fetchLiveQualicharge();
 }
 
 function toggleSelectAllOps(status) {
-    const checkboxes = document.querySelectorAll('#opCheckboxesList input[type="checkbox"]');
-    checkboxes.forEach(cb => cb.checked = status);
+    document.querySelectorAll('#opCheckboxesList input[type="checkbox"]').forEach(cb => cb.checked = status);
     onOpCheckboxChange();
 }
 
@@ -805,34 +744,17 @@ function updateOpHeaderLabel() {
 }
 
 function fetchLiveQualicharge() {
-    if(globalData.length === 0) {
-        log("LIVE", "Aucune station en mémoire pour lancer le live.", true);
-        return;
-    }
-    
-    if(!navigator.onLine) {
-        log("LIVE", "🌐 Hors-ligne : Qualicharge Live indisponible.", true);
-        return;
-    }
+    if(globalData.length === 0 || !navigator.onLine) return;
 
-    log("LIVE", "Recherche du fichier dynamique Qualicharge sur data.gouv.fr...");
-    
     fetch("https://www.data.gouv.fr/api/1/datasets/infrastructures-de-recharge-pour-vehicules-electriques-donnees-ouvertes/")
     .then(res => res.json())
     .then(data => {
-        const resource = data.resources.find(r => 
-            r.title.toLowerCase().includes('dynamique') || 
-            r.title.toLowerCase().includes('disponibilité') ||
-            r.description?.toLowerCase().includes('dynamique')
-        );
-        
+        const resource = data.resources.find(r => r.title.toLowerCase().includes('dynamique') || r.title.toLowerCase().includes('disponibilité'));
         const liveUrl = resource ? resource.latest : "https://www.data.gouv.fr/fr/datasets/r/411443b1-6667-473f-8217-1c57c167408f";
-        log("LIVE", `URL dynamique trouvée. Téléchargement CSV en cours...`);
         
         Papa.parse(liveUrl, {
             download: true, header: true, skipEmptyLines: true,
             complete: function(res) {
-                log("LIVE", `Flux Qualicharge chargé (${res.data.length} lignes). Analyse...`);
                 let dict = {};
                 res.data.forEach(r => { if(r.id_pdc_itinerance) dict[r.id_pdc_itinerance] = r; });
                 
@@ -841,50 +763,30 @@ function fetchLiveQualicharge() {
                     st.liveInfo = [];
                     st.pdcs.forEach(pdcId => {
                         let info = dict[pdcId] || { etat_pdc: "INCONNU", occupation_pdc: "INCONNU", horodatage: "N/A" };
-                        
                         let etatClean = (info.etat_pdc || "").trim().toLowerCase();
                         let occupClean = (info.occupation_pdc || "").trim().toLowerCase();
                         
                         let estEnService = ["en_service", "active", "available", "disponible"].includes(etatClean);
-                        etatClean = estEnService ? "en_service" : info.etat_pdc;
-
                         let estLibre = ["libre", "free", "false", "0", "available"].includes(occupClean);
-                        occupClean = estLibre ? "libre" : info.occupation_pdc;
 
-                        if (estEnService && estLibre) {
-                            countOk++;
-                        }
-                        st.liveInfo.push({id: pdcId, etat: etatClean, occup: occupClean, h: (info.horodatage || "").substring(0,16).replace('T',' ')});
+                        if (estEnService && estLibre) countOk++;
+                        st.liveInfo.push({id: pdcId, etat: estEnService ? "en_service" : info.etat_pdc, occup: estLibre ? "libre" : info.occupation_pdc, h: (info.horodatage || "").substring(0,16).replace('T',' ')});
                     });
                     st.dispo = countOk;
                 });
-                log("LIVE", "Disponibilités mises à jour avec succès !");
                 updateCurrentView();
-
-                if (isInitialGPXLoad) {
-                    const term = document.getElementById('terminal-logs');
-                    if (term && term.style.display === 'block') {
-                        toggleLogs();
-                    }
-                    isInitialGPXLoad = false;
-                }
-            },
-            error: function(err) { log("LIVE", "Erreur chargement flux live: " + err.message, true); }
+            }
         });
-    })
-    .catch(e => log("LIVE", "Erreur réseau API live: " + e.message, true));
+    });
 }
 
-// ============================================================================
-// FONCTIONS DE RENDU (STATIONS & ROADBOOK)
-// ============================================================================
 function getDirectionIcon(name, desc) {
     const text = (name + " " + desc).toLowerCase();
-    if (text.includes("left") || text.includes("gauche")) return "⬅️";
-    if (text.includes("right") || text.includes("droite")) return "➡️";
-    if (text.includes("straight") || text.includes("tout droit")) return "⬆️";
-    if (text.includes("roundabout") || text.includes("rond-point")) return "🔄";
-    if (text.includes("u-turn") || text.includes("demi-tour")) return "↩️";
+    if (text.includes("gauche") || text.includes("left")) return "⬅️";
+    if (text.includes("droite") || text.includes("right")) return "➡️";
+    if (text.includes("tout droit") || text.includes("straight")) return "⬆️";
+    if (text.includes("rond-point") || text.includes("roundabout")) return "🔄";
+    if (text.includes("demi-tour") || text.includes("u-turn")) return "↩️";
     return "🧭";
 }
 
@@ -918,11 +820,8 @@ function renderRoadbook() {
 
 function renderList() {
     const kmFilter = parseFloat(document.getElementById('kmInput').value) || 0;
-    
     let selectedOps = new Set();
-    document.querySelectorAll('#opCheckboxesList input[type="checkbox"]').forEach(cb => {
-        if(cb.checked) selectedOps.add(cb.value);
-    });
+    document.querySelectorAll('#opCheckboxesList input[type="checkbox"]').forEach(cb => { if(cb.checked) selectedOps.add(cb.value); });
 
     for(let k in markers) map.removeLayer(markers[k]);
     markers = {};
@@ -936,18 +835,10 @@ function renderList() {
         let color = s.dispo === 0 ? '#dc2626' : (s.dispo <= s.total/3 ? '#d97706' : '#16a34a');
         
         let m = L.circleMarker([s.lat, s.lng], {radius:8, fillColor:color, color:'#fff', weight:1, fillOpacity:0.9}).addTo(map);
-        
         const coordsStr = `${s.lat.toFixed(5)}, ${s.lng.toFixed(5)}`;
         const gmapsUrl = `https://www.google.com/maps/search/?api=1&query=${s.lat},${s.lng}`;
 
-        m.bindPopup(`
-          <b>${s.op}</b><br>${s.nom}<br>
-          <div style="margin-top:6px; font-size:11px;">
-            📍 <a href="${gmapsUrl}" target="_blank" rel="noopener noreferrer" style="color: #0284c7; text-decoration: underline; font-weight: bold;">
-              ${coordsStr} ↗
-            </a>
-          </div>
-        `);
+        m.bindPopup(`<b>${s.op}</b><br>${s.nom}<br><div style="margin-top:6px; font-size:11px;">📍 <a href="${gmapsUrl}" target="_blank" style="color: #0284c7; font-weight: bold;">${coordsStr} ↗</a></div>`);
         markers[i] = m;
         
         let pdcsHtml = s.liveInfo.map(p => `<tr><td>${p.id}</td><td><b>${p.etat}</b></td><td>${p.occup}</td><td>${p.h}</td></tr>`).join('');
@@ -985,15 +876,11 @@ function renderList() {
     document.getElementById('stationsContainer').innerHTML = html || "<div style='padding:20px; text-align:center;'>Aucune station trouvée avec ces critères.</div>";
 }
 
-// Initialisation de la carte
 initMap();
 
-// Enregistrement standard du Service Worker
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('./sw.js').then(() => {
-      log("PWA", "Service Worker actif.");
-    });
+    navigator.serviceWorker.register('./sw.js').then(() => log("PWA", "Service Worker actif."));
   });
 }
 </script>
