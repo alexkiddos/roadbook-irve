@@ -115,7 +115,7 @@
   
   <div id="main-content">
     <div class="header-controls">
-      <b>km :</b> <input type='number' id='kmInput' class='input-field' value="0.0" step="0.1" oninput='renderList()' max="9999">
+      <b>km :</b> <input type='number' id='kmInput' class='input-field' value="0.0" step="0.1" oninput='onKmInputChange()' max="9999">
       
       <div class="multi-select-container">
           <div class="multi-select-header" onclick="toggleOpDropdown(event)">Opérateurs (Tous) ▼</div>
@@ -138,11 +138,11 @@
   </div>
 
 <script>
-let map, gpxLine, userMarker, watchId = null, isAutoTrack = false, isSimulating = false, simInterval = null;
+let map, gpxLineFuture, gpxLinePast, userMarker, watchId = null, isAutoTrack = false, isSimulating = false, simInterval = null;
 let gpxPoints = [], globalData = [], markers = {};
 let lastValidLat = null, lastValidLng = null;
 let wakeLock = null;
-let isInitialGPXLoad = false; // Drapeau pour identifier le chargement d'un GPX
+let isInitialGPXLoad = false;
 const RAYON_RECHERCHE_KM = 3.0, PUISSANCE_MIN_KW = 100.0, KM_MIN_DEPART = 5.0;
 
 // ============================================================================
@@ -411,8 +411,12 @@ function toggleOpDropdown(e) {
 }
 
 function fitTraceBounds() {
-    if(gpxLine) {
-        map.fitBounds(gpxLine.getBounds());
+    if(gpxLineFuture) {
+        let bounds = gpxLineFuture.getBounds();
+        if (gpxLinePast && gpxLinePast.getLatLngs().length > 0) {
+            bounds.extend(gpxLinePast.getBounds());
+        }
+        map.fitBounds(bounds);
         log("MAP", "Zoom ajusté à la trace GPX.");
     } else {
         log("MAP", "Aucune trace GPX chargée.", true);
@@ -494,6 +498,29 @@ function toggleSimulation() {
     }
 }
 
+// Mise à jour de l'affichage des deux lignes de la trace (Past vs Future)
+function updateTraceDisplay(currentKm) {
+    if(gpxPoints.length === 0) return;
+
+    let pastPoints = [];
+    let futurePoints = [];
+
+    for(let pt of gpxPoints) {
+        if(pt.km <= currentKm) {
+            pastPoints.push([pt.lat, pt.lon]);
+        } else {
+            // Ajoute le point de coupure à la portion future pour éviter le "trou" visuel
+            if(futurePoints.length === 0 && pastPoints.length > 0) {
+                futurePoints.push(pastPoints[pastPoints.length - 1]);
+            }
+            futurePoints.push([pt.lat, pt.lon]);
+        }
+    }
+
+    if(gpxLinePast) gpxLinePast.setLatLngs(pastPoints);
+    if(gpxLineFuture) gpxLineFuture.setLatLngs(futurePoints);
+}
+
 function updatePosition(lat, lng, heading) {
     if (!isSimulating && lastValidLat !== null && lastValidLng !== null) {
         let distanceMetres = distanceHaversine(lastValidLat, lastValidLng, lat, lng) * 1000;
@@ -523,8 +550,15 @@ function updatePosition(lat, lng, heading) {
             if(d < minDist) { minDist = d; bestKm = pt.km; }
         }
         document.getElementById('kmInput').value = bestKm.toFixed(1);
+        updateTraceDisplay(bestKm);
         renderList();
     }
+}
+
+function onKmInputChange() {
+    const kmVal = parseFloat(document.getElementById('kmInput').value) || 0;
+    updateTraceDisplay(kmVal);
+    renderList();
 }
 
 function distanceHaversine(lat1, lon1, lat2, lon2) {
@@ -537,7 +571,7 @@ function handleGPXUpload(event) {
     const file = event.target.files[0];
     if(!file) return;
     
-    isInitialGPXLoad = true; // Activer le drapeau de chargement GPX
+    isInitialGPXLoad = true;
     log("GPX", `Fichier '${file.name}' sélectionné. Lecture en cours...`);
     const reader = new FileReader();
     reader.onload = (e) => {
@@ -555,9 +589,18 @@ function handleGPXUpload(event) {
         }
         log("GPX", `${gpxPoints.length} points extraits. Distance totale : ${km.toFixed(1)} km.`);
         
-        if(gpxLine) map.removeLayer(gpxLine);
-        gpxLine = L.polyline(gpxPoints.map(p => [p.lat, p.lon]), {color: '#0284c7', weight: 4}).addTo(map);
-        map.fitBounds(gpxLine.getBounds());
+        // Supprime les anciennes lignes si elles existent
+        if(gpxLineFuture) map.removeLayer(gpxLineFuture);
+        if(gpxLinePast) map.removeLayer(gpxLinePast);
+        
+        const allCoords = gpxPoints.map(p => [p.lat, p.lon]);
+        
+        // Ligne pour la partie restante (Futur)
+        gpxLineFuture = L.polyline(allCoords, {color: '#0284c7', weight: 4, opacity: 1.0}).addTo(map);
+        // Ligne pour la partie déjà parcourue (Passé) : vert avec 50% d'opacité
+        gpxLinePast = L.polyline([], {color: '#16a34a', weight: 4, opacity: 0.5}).addTo(map);
+        
+        map.fitBounds(gpxLineFuture.getBounds());
         
         toggleLogs(); 
         fetchAndFilterStations();
@@ -780,13 +823,12 @@ function fetchLiveQualicharge() {
                 log("LIVE", "Disponibilités mises à jour avec succès !");
                 renderList();
 
-                // Ferme le terminal UNIQUEMENT si c'est la séquence initiale de chargement du GPX
                 if (isInitialGPXLoad) {
                     const term = document.getElementById('terminal-logs');
                     if (term && term.style.display === 'block') {
                         toggleLogs();
                     }
-                    isInitialGPXLoad = false; // Réinitialisation
+                    isInitialGPXLoad = false;
                 }
             },
             error: function(err) { log("LIVE", "Erreur chargement flux live: " + err.message, true); }
