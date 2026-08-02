@@ -127,13 +127,14 @@
           </div>
       </div>
       
-      <input type="file" id="gpxInput" accept=".gpx" style="display:none;" onchange="handleGPXUpload(event)">
-      <button class="refresh-btn" onclick="document.getElementById('gpxInput').click()" title="Charger GPX">📁</button>
+      <!-- Acceptation étendue à GPX, JSON et GEOJSON -->
+      <input type="file" id="gpxInput" accept=".gpx,.json,.geojson" style="display:none;" onchange="handleTraceUpload(event)">
+      <button class="refresh-btn" onclick="document.getElementById('gpxInput').click()" title="Charger Trace (GPX/JSON Valhalla)">📁</button>
       <button class="refresh-btn" onclick="toggleLogs()" title="Logs">📝</button>
       <button class='refresh-btn' onclick="fetchLiveQualicharge()" title="Rafraîchir Live">🔄</button>
     </div>
     <div id="stationsContainer">
-        <div style="text-align:center; opacity:0.6; padding: 20px;">Veuillez charger un fichier GPX pour commencer.<br><br>💡 (Bouton 📁)</div>
+        <div style="text-align:center; opacity:0.6; padding: 20px;">Veuillez charger un fichier GPX ou JSON Valhalla pour commencer.<br><br>💡 (Bouton 📁)</div>
     </div>
   </div>
 
@@ -144,6 +145,37 @@ let lastValidLat = null, lastValidLng = null;
 let wakeLock = null;
 let isInitialGPXLoad = false;
 const RAYON_RECHERCHE_KM = 3.0, PUISSANCE_MIN_KW = 100.0, KM_MIN_DEPART = 5.0;
+
+// ============================================================================
+// DÉCODEUR POLYLINE VALHALLA (Precision 6 factor 1e6)
+// ============================================================================
+function decodeValhallaPolyline(str, precision = 6) {
+    let index = 0, lat = 0, lng = 0, coordinates = [];
+    const factor = Math.pow(10, precision);
+
+    while (index < str.length) {
+        let byte = null, shift = 0, result = 0;
+        do {
+            byte = str.charCodeAt(index++) - 63;
+            result |= (byte & 0x1f) << shift;
+            shift += 5;
+        } while (byte >= 0x20);
+        let deltaLat = ((result & 1) ? ~(result >> 1) : (result >> 1));
+        lat += deltaLat;
+
+        shift = 0; result = 0;
+        do {
+            byte = str.charCodeAt(index++) - 63;
+            result |= (byte & 0x1f) << shift;
+            shift += 5;
+        } while (byte >= 0x20);
+        let deltaLng = ((result & 1) ? ~(result >> 1) : (result >> 1));
+        lng += deltaLng;
+
+        coordinates.push([lat / factor, lng / factor]);
+    }
+    return coordinates;
+}
 
 // ============================================================================
 // GESTION DE LA MISE EN VEILLE DE L'ÉCRAN (WAKE LOCK API)
@@ -417,9 +449,9 @@ function fitTraceBounds() {
             bounds.extend(gpxLinePast.getBounds());
         }
         map.fitBounds(bounds);
-        log("MAP", "Zoom ajusté à la trace GPX.");
+        log("MAP", "Zoom ajusté à la trace.");
     } else {
-        log("MAP", "Aucune trace GPX chargée.", true);
+        log("MAP", "Aucune trace chargée.", true);
     }
 }
 
@@ -470,7 +502,7 @@ function toggleSimulation() {
     
     if(isSimulating) {
         if(gpxPoints.length === 0) {
-            log("SIM", "Impossible de simuler : aucun fichier GPX chargé.", true);
+            log("SIM", "Impossible de simuler : aucun fichier de trace chargé.", true);
             isSimulating = false;
             return;
         }
@@ -498,7 +530,6 @@ function toggleSimulation() {
     }
 }
 
-// Mise à jour de l'affichage des deux lignes de la trace (Past vs Future)
 function updateTraceDisplay(currentKm) {
     if(gpxPoints.length === 0) return;
 
@@ -509,7 +540,6 @@ function updateTraceDisplay(currentKm) {
         if(pt.km <= currentKm) {
             pastPoints.push([pt.lat, pt.lon]);
         } else {
-            // Ajoute le point de coupure à la portion future pour éviter le "trou" visuel
             if(futurePoints.length === 0 && pastPoints.length > 0) {
                 futurePoints.push(pastPoints[pastPoints.length - 1]);
             }
@@ -567,37 +597,41 @@ function distanceHaversine(lat1, lon1, lat2, lon2) {
     return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
 }
 
-function handleGPXUpload(event) {
+// ============================================================================
+// GESTION ET PARSING DES FICHIERS (GPX & JSON VALHALLA)
+// ============================================================================
+function handleTraceUpload(event) {
     const file = event.target.files[0];
     if(!file) return;
     
     isInitialGPXLoad = true;
-    log("GPX", `Fichier '${file.name}' sélectionné. Lecture en cours...`);
+    log("TRACE", `Fichier '${file.name}' sélectionné. Analyse en cours...`);
     const reader = new FileReader();
+    
     reader.onload = (e) => {
-        const parser = new DOMParser();
-        const xml = parser.parseFromString(e.target.result, "text/xml");
-        const trkpts = xml.getElementsByTagName("trkpt");
+        const content = e.target.result;
         gpxPoints = [];
-        let km = 0, prev = null;
-        for(let i=0; i<trkpts.length; i++) {
-            let lat = parseFloat(trkpts[i].getAttribute("lat"));
-            let lon = parseFloat(trkpts[i].getAttribute("lon"));
-            if(prev) km += distanceHaversine(prev.lat, prev.lon, lat, lon);
-            gpxPoints.push({lat, lon, km});
-            prev = {lat, lon};
+
+        if (file.name.endsWith('.json') || file.name.endsWith('.geojson') || content.trim().startsWith('{')) {
+            parseJSONTrace(content);
+        } else {
+            parseGPXTrace(content);
         }
-        log("GPX", `${gpxPoints.length} points extraits. Distance totale : ${km.toFixed(1)} km.`);
         
-        // Supprime les anciennes lignes si elles existent
+        if (gpxPoints.length === 0) {
+            log("TRACE", "Échec de lecture : Aucun point de tracé valide trouvé.", true);
+            return;
+        }
+
+        const maxKm = gpxPoints[gpxPoints.length - 1].km;
+        log("TRACE", `${gpxPoints.length} points extraits. Distance totale : ${maxKm.toFixed(1)} km.`);
+        
         if(gpxLineFuture) map.removeLayer(gpxLineFuture);
         if(gpxLinePast) map.removeLayer(gpxLinePast);
         
         const allCoords = gpxPoints.map(p => [p.lat, p.lon]);
         
-        // Ligne pour la partie restante (Futur)
         gpxLineFuture = L.polyline(allCoords, {color: '#0284c7', weight: 4, opacity: 1.0}).addTo(map);
-        // Ligne pour la partie déjà parcourue (Passé) : vert avec 50% d'opacité
         gpxLinePast = L.polyline([], {color: '#16a34a', weight: 4, opacity: 0.5}).addTo(map);
         
         map.fitBounds(gpxLineFuture.getBounds());
@@ -605,7 +639,60 @@ function handleGPXUpload(event) {
         toggleLogs(); 
         fetchAndFilterStations();
     };
+    
     reader.readAsText(file);
+}
+
+function parseGPXTrace(xmlString) {
+    log("GPX", "Analyse au format GPX/XML...");
+    const parser = new DOMParser();
+    const xml = parser.parseFromString(xmlString, "text/xml");
+    const trkpts = xml.getElementsByTagName("trkpt");
+    let km = 0, prev = null;
+    
+    for(let i=0; i<trkpts.length; i++) {
+        let lat = parseFloat(trkpts[i].getAttribute("lat"));
+        let lon = parseFloat(trkpts[i].getAttribute("lon"));
+        if(prev) km += distanceHaversine(prev.lat, prev.lon, lat, lon);
+        gpxPoints.push({lat, lon, km});
+        prev = {lat, lon};
+    }
+}
+
+function parseJSONTrace(jsonString) {
+    log("VALHALLA", "Analyse au format JSON/GeoJSON...");
+    try {
+        const data = JSON.parse(jsonString);
+        let coords = [];
+
+        // CAS 1: Format API Native Valhalla (trip.legs[].shape)
+        if (data.trip && data.trip.legs) {
+            data.trip.legs.forEach(leg => {
+                if (leg.shape) {
+                    const decoded = decodeValhallaPolyline(leg.shape, 6);
+                    coords = coords.concat(decoded);
+                }
+            });
+        } 
+        // CAS 2: Format GeoJSON classique (LineString)
+        else if (data.features && data.features[0] && data.features[0].geometry) {
+            const geom = data.features[0].geometry;
+            if (geom.type === "LineString") {
+                coords = geom.coordinates.map(c => [c[1], c[0]]); // GeoJSON = [lon, lat]
+            }
+        }
+
+        let km = 0, prev = null;
+        coords.forEach(pt => {
+            let lat = pt[0], lon = pt[1];
+            if (prev) km += distanceHaversine(prev.lat, prev.lon, lat, lon);
+            gpxPoints.push({ lat, lon, km });
+            prev = { lat, lon };
+        });
+
+    } catch (e) {
+        log("VALHALLA", "Erreur lors du décodage du JSON : " + e.message, true);
+    }
 }
 
 async function fetchAndFilterStations() {
@@ -707,7 +794,7 @@ async function processStaticData(rawData) {
         }
     });
 
-    log("TRAITEMENT", `${stationsMap.size} stations rapides identifiées. Projection sur le GPX...`);
+    log("TRAITEMENT", `${stationsMap.size} stations rapides identifiées. Projection sur le tracé...`);
     
     let sampled = gpxPoints.filter((_, i) => i % 3 === 0);
     globalData = [];
@@ -909,7 +996,7 @@ function renderList() {
 // Initialisation de la carte
 initMap();
 
-// Enregistrement standard du Service Worker
+// Enregistrement du Service Worker
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('./sw.js').then(() => {
