@@ -413,6 +413,9 @@ function initMap() {
       maxZoom: 19
     }).addTo(map);
 
+    // Ajout de l'échelle Leaflet standard
+    L.control.scale({ imperial: false, metric: true }).addTo(map);
+
     const CustomActionControls = L.Control.extend({
         options: { position: 'topleft' },
         onAdd: function() {
