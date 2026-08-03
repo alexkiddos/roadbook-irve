@@ -54,7 +54,7 @@
       }
 
       .leaflet-control-brouter { background: #fff; border: 2px solid rgba(0,0,0,0.2); background-clip: padding-box; border-radius: 4px; box-shadow: 0 1px 5px rgba(0,0,0,0.4); }
-      .brouter-ctrl-btn { width: 26px; height: 26px; line-height: 26px; display: block; text-align: center; text-decoration: none; color: #000; border-bottom: 1px solid #ccc; cursor: pointer; background-color: #fff; position: relative; }
+      .brouter-ctrl-btn { width: 26px; height: 26px; line-height: 26px; display: flex; align-items: center; justify-content: center; text-decoration: none; color: #000; border-bottom: 1px solid #ccc; cursor: pointer; background-color: #fff; position: relative; box-sizing: border-box; }
       .brouter-ctrl-btn:last-child { border-bottom: none; }
       .brouter-ctrl-btn:hover { background-color: #f4f4f4; color: #000; }
       .brouter-ctrl-btn.active-track { background-color: #16a34a !important; color: #fff !important; }
@@ -418,25 +418,29 @@ function initMap() {
         onAdd: function() {
             let container = L.DomUtil.create('div', 'leaflet-control-zoom leaflet-bar leaflet-control');
             
+            // Bouton 1 (b1): Prop 3 - Focus / Frame Bounds
             let b1 = L.DomUtil.create('a', 'brouter-ctrl-btn', container);
-            b1.innerHTML = '<svg viewBox="0 0 24 24"><path d="M20.5 3l-.16.03L15 5.1 9 3 3.36 4.9c-.21.07-.36.25-.36.48V20.5c0 .28.22.5.5.5l.16-.03L9 18.9l6 2.1 5.64-1.9c.21-.07.36-.25.36-.48V3.5c0-.28-.22-.5-.5-.5zM15 19l-6-2.11V5l6 2.11V19z"/></svg>';
+            b1.innerHTML = '<svg viewBox="0 0 24 24"><path d="M4 8V4h4M20 8V4h-4M4 16v4h4M20 16v4h-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="12" r="3"/></svg>';
             b1.title = "Zoomer sur toute la trace";
             b1.onclick = (e) => { e.stopPropagation(); fitTraceBounds(); };
 
+            // Bouton 2 (b2): Prop 3 - Pin de Localisation Standard
             let b2 = L.DomUtil.create('a', 'brouter-ctrl-btn', container);
-            b2.innerHTML = '<svg viewBox="0 0 24 24"><path d="M12 8c-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4-1.79-4-4-4zm8.94 3c-.46-4.17-3.77-7.48-7.94-7.94V1h-2v2.06C6.83 3.52 3.52 6.83 3.06 11H1v2h2.06c.46 4.17 3.77 7.48 7.94 7.94V23h2v-2.06c4.17-.46 7.48-3.77 7.94-7.94H23v-2h-2.06zM12 19c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7z"/></svg>';
+            b2.innerHTML = '<svg viewBox="0 0 24 24"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5a2.5 2.5 0 110-5 2.5 2.5 0 010 5z"/></svg>';
             b2.title = "Acquisition GPS ponctuelle";
             b2.onclick = (e) => { e.stopPropagation(); getSinglePosition(); };
 
+            // Bouton 3 (b3): Initial - Voiture Face
             let b3 = L.DomUtil.create('a', 'brouter-ctrl-btn', container);
             b3.id = 'autoTrackBtn';
             b3.innerHTML = '<svg viewBox="0 0 24 24"><path d="M18.92 6.01C18.72 5.42 18.16 5 17.5 5h-11c-.66 0-1.22.42-1.42 1.01L3 12v8c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h12v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-8l-2.08-5.99zM6.85 7h10.29l1.04 3H5.81l1.04-3zM19 17H5v-4.66l.12-.34h13.76l.12.34V17z"/><circle cx="7.5" cy="14.5" r="1.5"/><circle cx="16.5" cy="14.5" r="1.5"/></svg>';
             b3.title = "Activer/Désactiver suivi live";
             b3.onclick = (e) => { e.stopPropagation(); toggleAutoTrack(); };
 
+            // Bouton 4 (b4): Prop 3 - Fast Forward
             let b4 = L.DomUtil.create('a', 'brouter-ctrl-btn', container);
             b4.id = 'simTrackBtn';
-            b4.innerHTML = '<svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>';
+            b4.innerHTML = '<svg viewBox="0 0 24 24"><path d="M13 6l6 6-6 6M5 6l6 6-6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
             b4.title = "Simuler le trajet sur la trace";
             b4.onclick = (e) => { e.stopPropagation(); toggleSimulation(); };
 
@@ -1093,4 +1097,4 @@ if ('serviceWorker' in navigator) {
 }
 </script>
 </body>
-    </html>
+</html>
