@@ -1,5 +1,6 @@
-const CACHE_NAME = 'irve-roadbook-v1';
+const CACHE_NAME = 'irve-roadbook-v2';
 const MAP_CACHE_NAME = 'osm-tiles-cache-v1';
+const SHARED_CACHE_NAME = 'incoming-shared-files';
 
 const ASSETS = [
   './',
@@ -16,7 +17,7 @@ const CUSTOM_HEADERS = {
   'User-Agent': 'IRVERoadbookLive-PWA/1.0'
 };
 
-// INSTALLATION : On télécharge chaque asset individuellement pour éviter qu'une seule 404 ne bloque tout
+// INSTALLATION
 self.addEventListener('install', (e) => {
   e.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
@@ -28,12 +29,13 @@ self.addEventListener('install', (e) => {
   self.skipWaiting();
 });
 
+// ACTIVATION
 self.addEventListener('activate', (e) => {
   e.waitUntil(
     caches.keys().then((keys) =>
       Promise.all(
         keys.map((key) => {
-          if (key !== CACHE_NAME && key !== MAP_CACHE_NAME) {
+          if (key !== CACHE_NAME && key !== MAP_CACHE_NAME && key !== SHARED_CACHE_NAME) {
             return caches.delete(key);
           }
         })
@@ -43,10 +45,40 @@ self.addEventListener('activate', (e) => {
   self.clients.claim();
 });
 
+// INTERCEPTION DES REQUÊTES (FETCH)
 self.addEventListener('fetch', (e) => {
-  const url = e.request.url;
+  const url = new URL(e.request.url);
 
-  if (url.includes('tile.openstreetmap.de') || url.includes('tile.openstreetmap.org')) {
+  // --- TRAITEMENT DU PARTAGE DE FICHIER (Web Share Target API) ---
+  if (e.request.method === 'POST' && url.searchParams.get('shared') === 'true') {
+    e.respondWith(
+      (async () => {
+        try {
+          const formData = await e.request.formData();
+          const sharedFile = formData.get('gpx_file');
+
+          if (sharedFile) {
+            const cache = await caches.open(SHARED_CACHE_NAME);
+            // Stocke la réponse binaire du fichier partagé
+            await cache.put('/shared-trace-file', new Response(sharedFile, {
+              headers: {
+                'content-type': sharedFile.type || 'application/octet-stream',
+                'x-file-name': encodeURIComponent(sharedFile.name)
+              }
+            }));
+          }
+        } catch (err) {
+          console.error("Erreur lors de la réception du fichier partagé :", err);
+        }
+        // Redirection vers l'application principale avec le flag ?shared=true
+        return Response.redirect('./index.html?shared=true', 303);
+      })()
+    );
+    return;
+  }
+
+  // --- GESTION DE LA CARTE OSM ---
+  if (url.hostname.includes('tile.openstreetmap.de') || url.hostname.includes('tile.openstreetmap.org')) {
     e.respondWith(
       caches.open(MAP_CACHE_NAME).then(async (cache) => {
         const cachedResponse = await cache.match(e.request);
@@ -66,6 +98,7 @@ self.addEventListener('fetch', (e) => {
     return;
   }
 
+  // --- REQUÊTES DIVERSES EN CACHE FIRST / NETWORK FALLBACK ---
   e.respondWith(
     fetch(e.request).catch(() => caches.match(e.request))
   );
