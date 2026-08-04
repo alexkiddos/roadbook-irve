@@ -136,13 +136,13 @@
       <button class='refresh-btn' onclick="fetchLiveQualicharge()" title="Rafraîchir Live">🔄</button>
     </div>
     <div id="stationsContainer">
-        <div style="text-align:center; opacity:0.6; padding: 20px;">Veuillez charger un fichier GPX ou JSON Valhalla pour commencer.<br><br>💡 (Bouton 📁)</div>
+        <div style="text-align:center; opacity:0.6; padding: 20px;">Veuillez charger un fichier GPX ou JSON Valhalla pour commencer.<br><br>💡 (Bouton 📁 ou via Partage Android)</div>
     </div>
   </div>
 
 <script>
 let map, gpxLineFuture, gpxLinePast, userMarker, watchId = null, isAutoTrack = false, isSimulating = false, simInterval = null;
-let navDisplayMode = 'CLOSE'; // 'CLOSE' (Suivi rapproché) ou 'OVERVIEW' (Vue d'ensemble trace restante)
+let navDisplayMode = 'CLOSE';
 let gpxPoints = [], globalData = [], roadbookManeuvers = [], markers = {};
 let lastValidLat = null, lastValidLng = null;
 let wakeLock = null;
@@ -150,12 +150,11 @@ let isInitialGPXLoad = false;
 let currentViewMode = 'STATIONS';
 const RAYON_RECHERCHE_KM = 3.0, PUISSANCE_MIN_KW = 100.0, KM_MIN_DEPART = 5.0;
 
-// Coordonnées initiales au lancement de l'application
 const INITIAL_LAT = 46.603354;
 const INITIAL_LNG = 1.888334;
 const INITIAL_ZOOM = 5;
-const NAV_CLOSE_ZOOM = 11; // Niveau de zoom initialisé au clic sur Geolocation/Nav/Simu (ex: 13 pour ~5 km d'envergure)
-const NAV_MAX_OVERVIEW_ZOOM = 16; // Zoom max autorisé en mode vue d'ensemble (évite de sur-zoomer à l'arrivée)
+const NAV_CLOSE_ZOOM = 11;
+const NAV_MAX_OVERVIEW_ZOOM = 16;
 
 function toggleViewMode() {
     const btn = document.getElementById('btnToggleMode');
@@ -414,28 +413,24 @@ function initMap() {
         onAdd: function() {
             let container = L.DomUtil.create('div', 'leaflet-control-zoom leaflet-bar leaflet-control');
             
-            // Bouton 1 (b1): Recadrage sur la trace ou Vue d'ensemble portion bleue en Nav/Simu
             let b1 = L.DomUtil.create('a', 'brouter-ctrl-btn', container);
             b1.id = 'recadrageBtn';
             b1.innerHTML = '<svg viewBox="0 0 24 24" style="width:16px; height:16px; fill:none; stroke:currentColor; stroke-width:2.2; stroke-linecap:round; stroke-linejoin:round;"><line x1="19" y1="5" x2="14" y2="10"/><polyline points="14 5 19 5 19 10"/><line x1="5" y1="19" x2="10" y2="14"/><polyline points="10 19 5 19 5 14"/></svg>';
             b1.title = "Recadrer";
             b1.onclick = (e) => { e.stopPropagation(); handleButton1Click(); };
 
-            // Bouton 2 (b2): Pin de Localisation Standard / Recentrage Nav/Simu
             let b2 = L.DomUtil.create('a', 'brouter-ctrl-btn', container);
             b2.id = 'geolocBtn';
             b2.innerHTML = '<svg viewBox="0 0 24 24"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5a2.5 2.5 0 110-5 2.5 2.5 0 010 5z"/></svg>';
             b2.title = "Géolocalisation";
             b2.onclick = (e) => { e.stopPropagation(); handleButton2Click(); };
 
-            // Bouton 3 (b3): Voiture Face
             let b3 = L.DomUtil.create('a', 'brouter-ctrl-btn', container);
             b3.id = 'autoTrackBtn';
             b3.innerHTML = '<svg viewBox="0 0 24 24"><path d="M18.92 6.01C18.72 5.42 18.16 5 17.5 5h-11c-.66 0-1.22.42-1.42 1.01L3 12v8c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h12v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-8l-2.08-5.99zM6.85 7h10.29l1.04 3H5.81l1.04-3zM19 17H5v-4.66l.12-.34h13.76l.12.34V17z"/><circle cx="7.5" cy="14.5" r="1.5"/><circle cx="16.5" cy="14.5" r="1.5"/></svg>';
             b3.title = "Activer/Désactiver suivi live";
             b3.onclick = (e) => { e.stopPropagation(); toggleAutoTrack(); };
 
-            // Bouton 4 (b4): Fast Forward
             let b4 = L.DomUtil.create('a', 'brouter-ctrl-btn', container);
             b4.id = 'simTrackBtn';
             b4.innerHTML = '<svg viewBox="0 0 24 24"><path d="M13 6l6 6-6 6M5 6l6 6-6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
@@ -466,7 +461,7 @@ function toggleOpDropdown(e) {
 function handleButton1Click() {
     if (isAutoTrack || isSimulating) {
         navDisplayMode = 'OVERVIEW';
-        log("MAP", "Mode Vue d'Ensemble activé (Cadre sur la portion de route restante).");
+        log("MAP", "Mode Vue d'Ensemble activé.");
         applyNavBounds(lastValidLat, lastValidLng);
     } else {
         fitTraceBounds();
@@ -501,7 +496,6 @@ function fitTraceBounds() {
     }
 }
 
-// Cadrage sur les bornes de la portion bleue restante avec garde-fou maxZoom
 function applyNavBounds(lat, lng) {
     if (gpxLineFuture && gpxLineFuture.getLatLngs().length > 0) {
         map.fitBounds(gpxLineFuture.getBounds(), { 
@@ -538,7 +532,6 @@ function toggleAutoTrack() {
         btn.classList.add('active-track');
         navDisplayMode = 'CLOSE';
         
-        // Fixe la vue initiale au clic avec la constante NAV_CLOSE_ZOOM
         if (lastValidLat !== null && lastValidLng !== null) {
             map.setView([lastValidLat, lastValidLng], NAV_CLOSE_ZOOM);
         }
@@ -575,7 +568,6 @@ function toggleSimulation() {
         btn.classList.add('active-track');
         navDisplayMode = 'CLOSE';
 
-        // Fixe la vue initiale sur le premier point au clic avec la constante NAV_CLOSE_ZOOM
         if (gpxPoints.length > 0) {
             map.setView([gpxPoints[0].lat, gpxPoints[0].lon], NAV_CLOSE_ZOOM);
         }
@@ -637,7 +629,6 @@ function updatePosition(lat, lng, heading) {
         if (navDisplayMode === 'OVERVIEW') {
             applyNavBounds(lat, lng);
         } else {
-            // panTo déplace la carte sur la position sans réimposer/écraser le niveau de zoom manuel de l'utilisateur
             map.panTo([lat, lng], {animate: true, duration: 0.3});
         }
     } else {
@@ -680,11 +671,11 @@ function distanceHaversine(lat1, lon1, lat2, lon2) {
 }
 
 function handleTraceUpload(event) {
-    const file = event.target.files[0];
+    const file = event.target ? event.target.files[0] : event.file;
     if(!file) return;
     
     isInitialGPXLoad = true;
-    log("TRACE", `Fichier '${file.name}' sélectionné. Analyse en cours...`);
+    log("TRACE", `Fichier '${file.name}' reçu. Analyse en cours...`);
     const reader = new FileReader();
     
     reader.onload = (e) => {
@@ -719,11 +710,41 @@ function handleTraceUpload(event) {
         
         map.fitBounds(gpxLineFuture.getBounds());
         
-        toggleLogs(); 
         fetchAndFilterStations();
     };
     
     reader.readAsText(file);
+}
+
+// Vérification de la présence d'un fichier reçu par la Web Share Target API
+async function checkSharedFile() {
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('shared') === 'true') {
+        log("SHARE", "Fichier détecté via le menu Partager d'Android.");
+        try {
+            const cache = await caches.open('incoming-shared-files');
+            const response = await cache.match('/shared-trace-file');
+            if (response) {
+                const blob = await response.blob();
+                const rawFileName = response.headers.get('x-file-name');
+                const fileName = rawFileName ? decodeURIComponent(rawFileName) : 'trace.gpx';
+                
+                const file = new File([blob], fileName, { type: blob.type });
+                log("SHARE", `Chargement automatique du fichier partagé : ${fileName}`);
+                
+                // Traitement du fichier transmis
+                handleTraceUpload({ file: file });
+
+                // Nettoyage du cache temporaire
+                await cache.delete('/shared-trace-file');
+                
+                // Nettoyage de l'URL (?shared=true) sans recharger la page
+                window.history.replaceState({}, document.title, window.location.pathname);
+            }
+        } catch (err) {
+            log("SHARE", "Erreur lors de la récupération du fichier partagé : " + err.message, true);
+        }
+    }
 }
 
 function parseGPXTrace(xmlString) {
@@ -1139,11 +1160,12 @@ function renderStationsList(kmFilter) {
 // Initialisation de la carte
 initMap();
 
-// Enregistrement du Service Worker
+// Enregistrement du Service Worker & vérification des fichiers partagés
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('./sw.js').then(() => {
       log("PWA", "Service Worker actif.");
+      checkSharedFile();
     });
   });
 }
