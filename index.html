@@ -58,6 +58,7 @@
       .brouter-ctrl-btn:last-child { border-bottom: none; }
       .brouter-ctrl-btn:hover { background-color: #f4f4f4; color: #000; }
       .brouter-ctrl-btn.active-track { background-color: #16a34a !important; color: #fff !important; }
+      .brouter-ctrl-btn.active-mode { background-color: #0284c7 !important; color: #fff !important; }
       .brouter-ctrl-btn svg { width: 14px; height: 14px; vertical-align: middle; fill: currentColor; }
 
       #main-content { height: 55vh; height: 55dvh; flex: 1; overflow-y: auto; padding: 10px; box-sizing: border-box; }
@@ -141,6 +142,7 @@
 
 <script>
 let map, gpxLineFuture, gpxLinePast, userMarker, watchId = null, isAutoTrack = false, isSimulating = false, simInterval = null;
+let navDisplayMode = 'CLOSE'; // 'CLOSE' (Suivi rapproché) ou 'OVERVIEW' (Vue d'ensemble trace restante)
 let gpxPoints = [], globalData = [], roadbookManeuvers = [], markers = {};
 let lastValidLat = null, lastValidLng = null;
 let wakeLock = null;
@@ -152,6 +154,8 @@ const RAYON_RECHERCHE_KM = 3.0, PUISSANCE_MIN_KW = 100.0, KM_MIN_DEPART = 5.0;
 const INITIAL_LAT = 46.603354;
 const INITIAL_LNG = 1.888334;
 const INITIAL_ZOOM = 5;
+const NAV_CLOSE_ZOOM = 13; 
+const NAV_MAX_OVERVIEW_ZOOM = 16; // Zoom max autorisé en mode vue d'ensemble (évite de sur-zoomer à l'arrivée)
 
 function toggleViewMode() {
     const btn = document.getElementById('btnToggleMode');
@@ -410,17 +414,19 @@ function initMap() {
         onAdd: function() {
             let container = L.DomUtil.create('div', 'leaflet-control-zoom leaflet-bar leaflet-control');
             
-            // Bouton 1 (b1): Recadrage sur la trace ou vue initiale
+            // Bouton 1 (b1): Recadrage sur la trace ou Vue d'ensemble portion bleue en Nav/Simu
             let b1 = L.DomUtil.create('a', 'brouter-ctrl-btn', container);
+            b1.id = 'recadrageBtn';
             b1.innerHTML = '<svg viewBox="0 0 24 24" style="width:16px; height:16px; fill:none; stroke:currentColor; stroke-width:2.2; stroke-linecap:round; stroke-linejoin:round;"><line x1="19" y1="5" x2="14" y2="10"/><polyline points="14 5 19 5 19 10"/><line x1="5" y1="19" x2="10" y2="14"/><polyline points="10 19 5 19 5 14"/></svg>';
-            b1.title = "Recadrer (Trace / Vue initiale)";
-            b1.onclick = (e) => { e.stopPropagation(); fitTraceBounds(); };
+            b1.title = "Recadrer";
+            b1.onclick = (e) => { e.stopPropagation(); handleButton1Click(); };
 
-            // Bouton 2 (b2): Pin de Localisation Standard
+            // Bouton 2 (b2): Pin de Localisation Standard / Recentrage Nav/Simu
             let b2 = L.DomUtil.create('a', 'brouter-ctrl-btn', container);
+            b2.id = 'geolocBtn';
             b2.innerHTML = '<svg viewBox="0 0 24 24"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5a2.5 2.5 0 110-5 2.5 2.5 0 010 5z"/></svg>';
-            b2.title = "Acquisition GPS ponctuelle";
-            b2.onclick = (e) => { e.stopPropagation(); getSinglePosition(); };
+            b2.title = "Géolocalisation";
+            b2.onclick = (e) => { e.stopPropagation(); handleButton2Click(); };
 
             // Bouton 3 (b3): Voiture Face
             let b3 = L.DomUtil.create('a', 'brouter-ctrl-btn', container);
@@ -457,7 +463,30 @@ function toggleOpDropdown(e) {
     document.getElementById('opDropdownContent').classList.toggle('show');
 }
 
-// Recadrage intelligent : sur la trace si présente, sinon sur la vue initiale
+function handleButton1Click() {
+    if (isAutoTrack || isSimulating) {
+        navDisplayMode = 'OVERVIEW';
+        log("MAP", "Mode Vue d'Ensemble activé (Cadre sur la portion de route restante).");
+        applyNavBounds(lastValidLat, lastValidLng);
+    } else {
+        fitTraceBounds();
+    }
+}
+
+function handleButton2Click() {
+    if (isAutoTrack || isSimulating) {
+        navDisplayMode = 'CLOSE';
+        log("MAP", "Retour au Mode Suivi Rapproché.");
+        if (lastValidLat !== null && lastValidLng !== null) {
+            map.setView([lastValidLat, lastValidLng], NAV_CLOSE_ZOOM);
+        } else {
+            getSinglePosition();
+        }
+    } else {
+        getSinglePosition();
+    }
+}
+
 function fitTraceBounds() {
     if (gpxLineFuture) {
         let bounds = gpxLineFuture.getBounds();
@@ -469,6 +498,18 @@ function fitTraceBounds() {
     } else {
         map.setView([INITIAL_LAT, INITIAL_LNG], INITIAL_ZOOM);
         log("MAP", "Carte vide : Réinitialisation sur la vue initiale.");
+    }
+}
+
+// Cadrage sur les bornes de la portion bleue restante avec garde-fou maxZoom
+function applyNavBounds(lat, lng) {
+    if (gpxLineFuture && gpxLineFuture.getLatLngs().length > 0) {
+        map.fitBounds(gpxLineFuture.getBounds(), { 
+            padding: [30, 30],
+            maxZoom: NAV_MAX_OVERVIEW_ZOOM 
+        });
+    } else if (lat !== null && lng !== null) {
+        map.panTo([lat, lng]);
     }
 }
 
@@ -494,6 +535,7 @@ function toggleAutoTrack() {
     const btn = document.getElementById('autoTrackBtn');
     if (isAutoTrack) {
         btn.classList.add('active-track');
+        navDisplayMode = 'CLOSE';
         requestWakeLock();
         if(navigator.geolocation) {
             watchId = navigator.geolocation.watchPosition(
@@ -524,6 +566,7 @@ function toggleSimulation() {
             return;
         }
         btn.classList.add('active-track');
+        navDisplayMode = 'CLOSE';
         requestWakeLock();
         log("SIM", "Démarrage de la simulation de trajet...");
         let index = 0;
@@ -577,7 +620,15 @@ function updatePosition(lat, lng, heading) {
     lastValidLat = lat;
     lastValidLng = lng;
 
-    map.panTo([lat, lng], {animate: true, duration: 0.3});
+    if (isAutoTrack || isSimulating) {
+        if (navDisplayMode === 'OVERVIEW') {
+            applyNavBounds(lat, lng);
+        } else {
+            map.panTo([lat, lng], {animate: true, duration: 0.3});
+        }
+    } else {
+        map.panTo([lat, lng], {animate: true, duration: 0.3});
+    }
     
     let h = heading || 0;
     let svg = `<div style="width:32px;height:32px;"><svg class="user-loc-arrow" style="transform: rotate(${h}deg);" viewBox="0 0 24 24"><path fill="#0284c7" stroke="#ffffff" stroke-width="2" d="M12 2L4.5 20.29l.71.71L12 18l6.79 3 .71-.71z"/></svg></div>`;
