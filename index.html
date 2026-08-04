@@ -81,7 +81,6 @@
       .pk-line { font-size: 16px; font-weight: 800; display: flex; align-items: center; gap: 4px; }
       .detour-line { font-size: 11px; opacity: 0.7; margin-left: 18px; margin-top: 2px; }
       .info-block { flex: 1; min-width: 0; }
-      /* Mise à jour pour permettre le retour à la ligne automatique des textes longs */
       .op-title { font-weight: 800; font-size: 15px; word-break: break-word; color: var(--op-color); }
       .st-name { font-size: 13px; opacity: 0.9; margin-top: 2px; word-break: break-word; }
       .st-commune { font-size: 11px; opacity: 0.75; font-weight: 600; margin-top: 1px; word-break: break-word; }
@@ -146,8 +145,13 @@ let gpxPoints = [], globalData = [], roadbookManeuvers = [], markers = {};
 let lastValidLat = null, lastValidLng = null;
 let wakeLock = null;
 let isInitialGPXLoad = false;
-let currentViewMode = 'STATIONS'; // 'STATIONS' ou 'ROADBOOK'
+let currentViewMode = 'STATIONS';
 const RAYON_RECHERCHE_KM = 3.0, PUISSANCE_MIN_KW = 100.0, KM_MIN_DEPART = 5.0;
+
+// Coordonnées initiales au lancement de l'application
+const INITIAL_LAT = 46.603354;
+const INITIAL_LNG = 1.888334;
+const INITIAL_ZOOM = 5;
 
 function toggleViewMode() {
     const btn = document.getElementById('btnToggleMode');
@@ -158,16 +162,10 @@ function toggleViewMode() {
         currentViewMode = 'STATIONS';
         btn.innerText = '⚡';
     }
-    
-    // Filtre opérateur affiché uniquement en mode Stations
     document.getElementById('operatorSelectContainer').style.display = (currentViewMode === 'STATIONS') ? 'inline-block' : 'none';
-    
     renderList();
 }
 
-// ============================================================================
-// DÉCODEUR POLYLINE VALHALLA (Precision 6 factor 1e6)
-// ============================================================================
 function decodeValhallaPolyline(str, precision = 6) {
     let index = 0, lat = 0, lng = 0, coordinates = [];
     const factor = Math.pow(10, precision);
@@ -196,9 +194,6 @@ function decodeValhallaPolyline(str, precision = 6) {
     return coordinates;
 }
 
-// ============================================================================
-// GESTION DE LA MISE EN VEILLE DE L'ÉCRAN (WAKE LOCK API)
-// ============================================================================
 async function requestWakeLock() {
   if ('wakeLock' in navigator) {
     try {
@@ -227,9 +222,6 @@ document.addEventListener('visibilitychange', async () => {
   }
 });
 
-// ============================================================================
-// GESTION DU STOCKAGE LOCAL INDEXEDDB (STATIONS ET COMMUNES)
-// ============================================================================
 const DB_NAME = 'IRVEDatabase';
 const DB_VERSION = 2;
 const STORE_STATIONS = 'stations';
@@ -253,7 +245,6 @@ function openDB() {
   });
 }
 
-// ---------------- GESTION BASE COMMUNES ----------------
 async function loadOrFetchCommunesDB() {
     try {
         const db = await openDB();
@@ -332,7 +323,6 @@ async function getCommunesMap(codesInseeSet) {
     return communesMap;
 }
 
-// ---------------- GESTION BASE STATIONS ----------------
 async function saveStaticDataToDB(data) {
   try {
     const db = await openDB();
@@ -406,14 +396,13 @@ function toggleLogs() {
 }
 
 function initMap() {
-    map = L.map('map', {zoomControl: true}).setView([46.603354, 1.888334], 5);
+    map = L.map('map', {zoomControl: true}).setView([INITIAL_LAT, INITIAL_LNG], INITIAL_ZOOM);
     
     L.tileLayer('https://{s}.tile.openstreetmap.de/tiles/osmde/{z}/{x}/{y}.png', { 
       minZoom: 4,
       maxZoom: 19
     }).addTo(map);
 
-    // Ajout de l'échelle Leaflet standard
     L.control.scale({ imperial: false, metric: true }).addTo(map);
 
     const CustomActionControls = L.Control.extend({
@@ -421,26 +410,26 @@ function initMap() {
         onAdd: function() {
             let container = L.DomUtil.create('div', 'leaflet-control-zoom leaflet-bar leaflet-control');
             
-            // Bouton 1 (b1): Prop 3 - Focus / Frame Bounds
+            // Bouton 1 (b1): Recadrage sur la trace ou vue initiale
             let b1 = L.DomUtil.create('a', 'brouter-ctrl-btn', container);
-            b1.innerHTML = '<svg viewBox="0 0 24 24"><path d="M4 8V4h4M20 8V4h-4M4 16v4h4M20 16v4h-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="12" r="3"/></svg>';
-            b1.title = "Zoomer sur toute la trace";
+            b1.innerHTML = '<svg viewBox="0 0 24 24" style="width:16px; height:16px; fill:none; stroke:currentColor; stroke-width:2.2; stroke-linecap:round; stroke-linejoin:round;"><line x1="19" y1="5" x2="14" y2="10"/><polyline points="14 5 19 5 19 10"/><line x1="5" y1="19" x2="10" y2="14"/><polyline points="10 19 5 19 5 14"/></svg>';
+            b1.title = "Recadrer (Trace / Vue initiale)";
             b1.onclick = (e) => { e.stopPropagation(); fitTraceBounds(); };
 
-            // Bouton 2 (b2): Prop 3 - Pin de Localisation Standard
+            // Bouton 2 (b2): Pin de Localisation Standard
             let b2 = L.DomUtil.create('a', 'brouter-ctrl-btn', container);
             b2.innerHTML = '<svg viewBox="0 0 24 24"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5a2.5 2.5 0 110-5 2.5 2.5 0 010 5z"/></svg>';
             b2.title = "Acquisition GPS ponctuelle";
             b2.onclick = (e) => { e.stopPropagation(); getSinglePosition(); };
 
-            // Bouton 3 (b3): Initial - Voiture Face
+            // Bouton 3 (b3): Voiture Face
             let b3 = L.DomUtil.create('a', 'brouter-ctrl-btn', container);
             b3.id = 'autoTrackBtn';
             b3.innerHTML = '<svg viewBox="0 0 24 24"><path d="M18.92 6.01C18.72 5.42 18.16 5 17.5 5h-11c-.66 0-1.22.42-1.42 1.01L3 12v8c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h12v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-8l-2.08-5.99zM6.85 7h10.29l1.04 3H5.81l1.04-3zM19 17H5v-4.66l.12-.34h13.76l.12.34V17z"/><circle cx="7.5" cy="14.5" r="1.5"/><circle cx="16.5" cy="14.5" r="1.5"/></svg>';
             b3.title = "Activer/Désactiver suivi live";
             b3.onclick = (e) => { e.stopPropagation(); toggleAutoTrack(); };
 
-            // Bouton 4 (b4): Prop 3 - Fast Forward
+            // Bouton 4 (b4): Fast Forward
             let b4 = L.DomUtil.create('a', 'brouter-ctrl-btn', container);
             b4.id = 'simTrackBtn';
             b4.innerHTML = '<svg viewBox="0 0 24 24"><path d="M13 6l6 6-6 6M5 6l6 6-6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
@@ -468,16 +457,18 @@ function toggleOpDropdown(e) {
     document.getElementById('opDropdownContent').classList.toggle('show');
 }
 
+// Recadrage intelligent : sur la trace si présente, sinon sur la vue initiale
 function fitTraceBounds() {
-    if(gpxLineFuture) {
+    if (gpxLineFuture) {
         let bounds = gpxLineFuture.getBounds();
         if (gpxLinePast && gpxLinePast.getLatLngs().length > 0) {
             bounds.extend(gpxLinePast.getBounds());
         }
         map.fitBounds(bounds);
-        log("MAP", "Zoom ajusté à la trace.");
+        log("MAP", "Recadrage sur la trace.");
     } else {
-        log("MAP", "Aucune trace chargée.", true);
+        map.setView([INITIAL_LAT, INITIAL_LNG], INITIAL_ZOOM);
+        log("MAP", "Carte vide : Réinitialisation sur la vue initiale.");
     }
 }
 
@@ -623,9 +614,6 @@ function distanceHaversine(lat1, lon1, lat2, lon2) {
     return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
 }
 
-// ============================================================================
-// GESTION ET PARSING DES FICHIERS (GPX & JSON VALHALLA)
-// ============================================================================
 function handleTraceUpload(event) {
     const file = event.target.files[0];
     if(!file) return;
@@ -695,29 +683,26 @@ function parseJSONTrace(jsonString) {
         const data = JSON.parse(jsonString);
         let coords = [];
 
-        // CAS 1: Format API Native Valhalla (trip.legs[].shape)
         if (data.trip && data.trip.legs) {
             data.trip.legs.forEach(leg => {
                 const decoded = leg.shape ? decodeValhallaPolyline(leg.shape, 6) : [];
                 const baseIndex = coords.length;
                 coords = coords.concat(decoded);
 
-                // Extraction des instructions Valhalla (maneuvers)
                 if (leg.maneuvers && Array.isArray(leg.maneuvers)) {
                     leg.maneuvers.forEach(m => {
                         const ptIndex = baseIndex + (m.begin_shape_index || 0);
                         roadbookManeuvers.push({
                             instruction: m.instruction || "Continuer",
                             street: (m.street_names || []).join(', '),
-                            length: m.length || 0, // km
+                            length: m.length || 0,
                             shapeIndex: ptIndex,
-                            km: 0 // Sera calculé après la génération des gpxPoints
+                            km: 0
                         });
                     });
                 }
             });
         } 
-        // CAS 2: Format GeoJSON classique
         else if (data.features && data.features[0] && data.features[0].geometry) {
             const geom = data.features[0].geometry;
             if (geom.type === "LineString") {
@@ -733,7 +718,6 @@ function parseJSONTrace(jsonString) {
             prev = { lat, lon };
         });
 
-        // Association exacte des kilomètres aux instructions Valhalla
         roadbookManeuvers.forEach(m => {
             if (m.shapeIndex < gpxPoints.length) {
                 const pt = gpxPoints[m.shapeIndex];
