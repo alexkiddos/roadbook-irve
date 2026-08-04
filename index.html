@@ -154,7 +154,7 @@ const RAYON_RECHERCHE_KM = 3.0, PUISSANCE_MIN_KW = 100.0, KM_MIN_DEPART = 5.0;
 const INITIAL_LAT = 46.603354;
 const INITIAL_LNG = 1.888334;
 const INITIAL_ZOOM = 5;
-const NAV_CLOSE_ZOOM = 11; 
+const NAV_CLOSE_ZOOM = 11; // Niveau de zoom initialisé au clic sur Geolocation/Nav/Simu (ex: 13 pour ~5 km d'envergure)
 const NAV_MAX_OVERVIEW_ZOOM = 16; // Zoom max autorisé en mode vue d'ensemble (évite de sur-zoomer à l'arrivée)
 
 function toggleViewMode() {
@@ -522,6 +522,7 @@ function getSinglePosition() {
     navigator.geolocation.getCurrentPosition(
         pos => {
             updatePosition(pos.coords.latitude, pos.coords.longitude, pos.coords.heading);
+            map.setView([pos.coords.latitude, pos.coords.longitude], NAV_CLOSE_ZOOM);
             log("GPS", "Position ponctuelle acquise avec succès.");
         },
         err => log("GPS", "Erreur acquisition : " + err.message, true),
@@ -536,6 +537,12 @@ function toggleAutoTrack() {
     if (isAutoTrack) {
         btn.classList.add('active-track');
         navDisplayMode = 'CLOSE';
+        
+        // Fixe la vue initiale au clic avec la constante NAV_CLOSE_ZOOM
+        if (lastValidLat !== null && lastValidLng !== null) {
+            map.setView([lastValidLat, lastValidLng], NAV_CLOSE_ZOOM);
+        }
+
         requestWakeLock();
         if(navigator.geolocation) {
             watchId = navigator.geolocation.watchPosition(
@@ -567,6 +574,12 @@ function toggleSimulation() {
         }
         btn.classList.add('active-track');
         navDisplayMode = 'CLOSE';
+
+        // Fixe la vue initiale sur le premier point au clic avec la constante NAV_CLOSE_ZOOM
+        if (gpxPoints.length > 0) {
+            map.setView([gpxPoints[0].lat, gpxPoints[0].lon], NAV_CLOSE_ZOOM);
+        }
+
         requestWakeLock();
         log("SIM", "Démarrage de la simulation de trajet...");
         let index = 0;
@@ -624,6 +637,7 @@ function updatePosition(lat, lng, heading) {
         if (navDisplayMode === 'OVERVIEW') {
             applyNavBounds(lat, lng);
         } else {
+            // panTo déplace la carte sur la position sans réimposer/écraser le niveau de zoom manuel de l'utilisateur
             map.panTo([lat, lng], {animate: true, duration: 0.3});
         }
     } else {
