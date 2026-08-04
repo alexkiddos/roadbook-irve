@@ -24,14 +24,24 @@
   "scope": "./",
   "lang": "fr-FR",
   "share_target": {
-    "action": "./index.html?shared=true",
+    "action": "https://votre-pseudo.github.io/votre-depot/index.html?shared=true",
     "method": "POST",
     "enctype": "multipart/form-data",
     "params": {
       "files": [
         {
           "name": "gpx_file",
-          "accept": [".gpx", ".json", ".geojson", "application/gpx+xml", "application/json"]
+          "accept": [
+            ".gpx", 
+            ".json", 
+            ".geojson", 
+            "application/gpx+xml", 
+            "application/json", 
+            "application/geo+json",
+            "application/octet-stream", 
+            "text/xml", 
+            "text/plain"
+          ]
         }
       ]
     }
