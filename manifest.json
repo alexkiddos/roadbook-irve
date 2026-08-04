@@ -22,5 +22,18 @@
   "display": "standalone",
   "orientation": "portrait",
   "scope": "./",
-  "lang": "fr-FR"
+  "lang": "fr-FR",
+  "share_target": {
+    "action": "./index.html?shared=true",
+    "method": "POST",
+    "enctype": "multipart/form-data",
+    "params": {
+      "files": [
+        {
+          "name": "gpx_file",
+          "accept": [".gpx", ".json", ".geojson", "application/gpx+xml", "application/json"]
+        }
+      ]
+    }
+  }
 }
